@@ -2,6 +2,30 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.6.0] - 2026-11-01
+
+**云更新：自动查仓库新版本 → 显示更新内容 → 下载 → 覆盖安装 → 提示重启。**
+
+### 新增
+
+- `lib/update.js`：查 `GET /repos/<updateRepo>/releases/latest`，比较版本（支持 `0.10 > 0.9`、
+  `1.0.0 > 1.0.0-rc.1`），只取本项目命名的 zip 附件，下载后校验大小。
+- 设置页新增第一张卡片「云更新」：当前版本 / 最新版本 / 检查时间、可滚动的更新内容、
+  三个按钮（检查更新 / 下载 vX / 安装 vX），装完变红字提示「请关掉 DSH 再打开」。
+- 安装流程：先把现版本文件备份到 `<数据目录>/updates/backup-<版本>-<时间戳>/`，再覆盖插件本体
+  （`package.json`、`client.js`、`lib/`、`bin/`、`docs/`、`examples/`、`test/`、`scripts/`、
+  README、CHANGELOG、LICENSE、NOTICE）；`node_modules`、`.git`、数据目录不碰。
+- 解压：Windows 走 PowerShell `Expand-Archive`，其他平台走 `unzip`；失败只保留 zip 并提示手动解压。
+- 检查结果落盘 `<数据目录>/update-state.json`（10 分钟内复用），启动时先显示缓存，
+  延迟 4 秒后台再查一次，不阻塞启动。
+- 三个入口：设置页按钮、CLI `update check|download|install`、`toolbox { action: "update", step }`。
+- 配置：`updateRepo` / `updateCheck` / `updateCheckHours`；私有仓库或限流可用 `GH_TOKEN` / `GITHUB_TOKEN`。
+- API：`GET /dsh-lazy-toolbox/api` 返回 `version` 与 `update`；新增 `update.check` /
+  `update.download` / `update.install` 三个 op。
+- 文档 [docs/update.md](docs/update.md)，README 中英同步。
+- 测试：新增 `test/update.test.mjs`（7 项，含真实 zip 的解压→备份→覆盖链路）与 3 项设置页用例，
+  全量 **78 项** 通过。
+
 ## [0.5.3] - 2026-10-31
 
 **skill 只注入大纲（正文按需取）、每条目可选「懒加载 / 跳过」、破甲类插件进「不做懒加载」名单。**

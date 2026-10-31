@@ -18,6 +18,7 @@ import process from "node:process";
 import { Store, defaultDataDir } from "../lib/store.js";
 import { McpManager } from "../lib/mcp.js";
 import { PluginLog } from "../lib/log.js";
+import { UpdateManager } from "../lib/update.js";
 import {
   migrateMcpFromProfiles,
   migrateSkillsFromRoots,
@@ -147,6 +148,46 @@ function cmdSkill(store, positional, flags) {
   print("");
   print(outcome.text.trimEnd());
   if (outcome.kind === "all") print(`\n（整篇 ${skill.content.length} 字符）`);
+}
+
+/** 云更新：check / download / install。 */
+async function cmdUpdate(store, positional) {
+  const step = String(positional[0] ?? "check").toLowerCase();
+  const pkg = readJson(new URL("../package.json", import.meta.url), { version: "0.0.0" });
+  const updater = new UpdateManager({
+    root: store.root,
+    config: { updateRepo: process.env.LAZY_TOOLBOX_REPO || "anyi-520/dsh-lazy-toolbox" },
+    currentVersion: pkg.version ?? "0.0.0",
+    log: new PluginLog({ dir: path.join(store.root, "logs") }),
+    logger: console,
+  });
+  if (step === "check") {
+    const status = await updater.check({ force: true });
+    print(`仓库: ${status.repo}`);
+    print(`当前: ${status.current}  最新: ${status.latest || "?"}`);
+    if (status.error) print(`失败: ${status.error}`);
+    print(status.hasUpdate ? `有新版本 ${status.latest}（下一步 update download）` : "已是最新");
+    if (status.notes) {
+      print("");
+      print(status.notes);
+    }
+    return;
+  }
+  if (step === "download") {
+    const status = await updater.download();
+    print(`版本: ${status.download?.version ?? "?"}`);
+    print(`文件: ${status.download?.file ?? ""}`);
+    print(`解压: ${status.download?.packageDir || "失败（需手动解压）"}`);
+    return;
+  }
+  if (step === "install") {
+    const status = await updater.install();
+    print(`已安装: ${status.installed?.version ?? "?"}（${status.installed?.files ?? 0} 项）`);
+    print(`备份: ${status.installed?.backupDir ?? ""}`);
+    print("请重启 DSH 让新版本生效。");
+    return;
+  }
+  throw new Error("用法：update [check|download|install]");
 }
 
 function cmdList(store) {
@@ -403,9 +444,11 @@ async function main() {  const { command, positional, flags } = parseArgs(proces
       return cmdMode(store, positional);
     case "skill":
       return cmdSkill(store, positional, flags);
+    case "update":
+      return cmdUpdate(store, positional);
     default:
       print(`未知命令：${command}`);
-      print("可用：status | list | migrate [--dry-run] | restore [--skills-only|--mcp-only] | add-skill <path> | add-mcp <name> | remove <id> | enable <id> | disable <id> | mode <id> <lazy|skip> | skill <名字> [--section id] | discover [--dry-run] | logs [--lines N] [--path] | wire-profile | unwire-profile | doctor");
+      print("可用：status | list | migrate [--dry-run] | restore [--skills-only|--mcp-only] | add-skill <path> | add-mcp <name> | remove <id> | enable <id> | disable <id> | mode <id> <lazy|skip> | skill <名字> [--section id] | discover [--dry-run] | update [check|download|install] | logs [--lines N] [--path] | wire-profile | unwire-profile | doctor");
       process.exitCode = 1;
   }
 }

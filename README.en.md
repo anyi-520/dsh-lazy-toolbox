@@ -112,6 +112,9 @@ config:
   mcpIdleMs: 60000
   maxCatalogItems: 200
   autoDetectPluginAssets: true     # adopt skills / MCPs bundled in plugins
+  updateRepo: anyi-520/dsh-lazy-toolbox
+  updateCheck: true
+  updateCheckHours: 6
   skillInjectMode: index           # "index" (outline only) | "full"
   skillSectionMaxChars: 60000
   neverLazyBuiltin: true
@@ -122,6 +125,25 @@ config:
   logMaxBytes: 2097152            # per-file cap, overflow rolls to .1 .2 …
   logRetentionDays: 14            # 0 disables pruning
 ```
+
+## Cloud update
+
+The first card in Settings is **Cloud update**. It asks this repository's GitHub Release:
+
+```
+current v0.5.3 · update available 0.6.0    [Check] [Download 0.6.0] [Install 0.6.0]
+(the release notes below, scrollable)
+```
+
+- **Check** — `GET /repos/<updateRepo>/releases/latest`, cached on disk
+  (`<data dir>/update-state.json`); startup shows the cache, then re-checks in the background.
+- **Download** — the release zip lands in `<data dir>/updates/` and is extracted; size mismatch aborts.
+- **Install** — current files are backed up to `updates/backup-<version>-<ts>/` first, then the plugin
+  itself is overwritten. `node_modules`, `.git` and the data directory are never touched.
+- **It never restarts anything** — after install you get a red "close DSH and open it again" notice.
+
+Available from Settings, from `dsh-lazy-toolbox update check|download|install`, and from the model as
+`toolbox { action: "update", step: "check" }`. Details: [docs/update.md](docs/update.md) (Chinese).
 
 ## Outline-only skill injection
 

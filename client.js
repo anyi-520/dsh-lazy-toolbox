@@ -101,6 +101,127 @@ window.__ModuleLoader__.load({
       );
     }
 
+
+    /** 一个小按钮。 */
+    function Btn({ label, onClick, disabled, primary, tone }) {
+      const color = tone === "danger" ? "#b4232b" : primary ? "var(--dsw-alias-label-primary-foreground, #fff)" : "var(--dsw-alias-label-primary, #111)";
+      return h(
+        "button",
+        {
+          type: "button",
+          disabled: Boolean(disabled),
+          onClick,
+          style: {
+            fontSize: 12,
+            lineHeight: "20px",
+            padding: "3px 12px",
+            borderRadius: 999,
+            cursor: disabled ? "default" : "pointer",
+            opacity: disabled ? 0.5 : 1,
+            border: primary ? "none" : "0.5px solid var(--dsw-alias-border, rgba(0,0,0,.18))",
+            background: primary ? "var(--dsw-alias-button-primary-fill, #111)" : "transparent",
+            color,
+          },
+        },
+        label,
+      );
+    }
+
+    /**
+     * 云更新：查仓库有没有新版本 → 显示更新内容 → 下载 → 覆盖安装 → 提示重启。
+     * 数据来自宿主 GET /dsh-lazy-toolbox/api 的 update 字段（读的是本地缓存，不联网）。
+     */
+    function UpdateCard({ update, busy, onCheck, onDownload, onInstall }) {
+      const state = update ?? {};
+      const current = state.current ?? "?";
+      const latest = state.latest ?? "";
+      const installed = state.installed ?? null;
+      const download = state.download ?? null;
+      const restartRequired = installed?.restartRequired === true;
+
+      return h(
+        "div",
+        { style: styles.card },
+        h(
+          "div",
+          { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } },
+          h("h3", { style: styles.title }, "云更新"),
+          h(
+            "span",
+            { style: { ...styles.pillBase, color: state.hasUpdate ? COLORS.ok : COLORS.off } },
+            state.hasUpdate ? `有新版本 ${latest}` : latest ? "已是最新" : "还没检查过",
+          ),
+          h("span", { style: styles.hint }, `当前 v${current}${state.checkedAt ? ` · 检查于 ${String(state.checkedAt).slice(0, 16).replace("T", " ")}` : ""}`),
+        ),
+        h("p", { style: styles.desc }, `从 ${state.repo ?? "仓库"} 拉 Release：只显示更新内容，下载与安装都由你点，装完提示重启。`),
+        restartRequired
+          ? h(
+              "div",
+              {
+                style: {
+                  fontSize: 12,
+                  lineHeight: "18px",
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  background: "rgba(180,35,43,.08)",
+                  color: "#b4232b",
+                },
+              },
+              `已安装 v${installed?.version ?? ""}（${installed?.files ?? 0} 项，备份在 ${installed?.backupDir ?? "-"}）。请关掉 DSH 再打开让新版本生效——只刷新页面不够。`,
+            )
+          : null,
+        state.error && !latest ? h("div", { style: { ...styles.hint, color: "#b4232b" } }, `检查失败：${state.error}`) : null,
+        latest && state.notes
+          ? h(
+              "div",
+              {
+                style: {
+                  maxHeight: 220,
+                  overflow: "auto",
+                  border: "0.5px solid var(--dsw-alias-border, rgba(0,0,0,.1))",
+                  borderRadius: 10,
+                  padding: "8px 10px",
+                  fontSize: 11.5,
+                  lineHeight: "17px",
+                  whiteSpace: "pre-wrap",
+                  color: "var(--dsw-alias-label-secondary, #333)",
+                },
+              },
+              state.notes,
+            )
+          : null,
+        h(
+          "div",
+          { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+          h(Btn, { label: busy === "check" ? "检查中…" : "检查更新", onClick: onCheck, disabled: Boolean(busy) }),
+          state.hasUpdate
+            ? h(Btn, {
+                label: busy === "download" ? "下载中…" : download ? `重新下载 v${download.version}` : `下载 v${latest}`,
+                onClick: onDownload,
+                disabled: Boolean(busy),
+              })
+            : null,
+          download?.extracted && state.hasUpdate
+            ? h(Btn, {
+                label: busy === "install" ? "安装中…" : `安装 v${download.version}`,
+                onClick: onInstall,
+                disabled: Boolean(busy),
+                primary: true,
+              })
+            : null,
+          h("span", { style: styles.hint }, download?.extracted ? `已下载并解压到 ${download.packageDir}` : download ? download.extractError : ""),
+        ),
+        state.htmlUrl
+          ? h("a", {
+              href: state.htmlUrl,
+              target: "_blank",
+              rel: "noreferrer",
+              style: { fontSize: 11, color: "var(--dsw-alias-label-link, #1a6bd6)" },
+            }, "在 GitHub 上查看这个 Release")
+          : null,
+      );
+    }
+
     /**
      * 加载方式选择器：懒加载 / 跳过。
      * 「跳过」= 不做懒加载：不进系统提示目录、不许 load，文件与配置都还在。
@@ -244,6 +365,7 @@ window.__ModuleLoader__.load({
       const [inventory, setInventory] = useState(null);
       const [error, setError] = useState("");
       const [busy, setBusy] = useState("");
+      const [update, setUpdate] = useState(null);
 
       const ingest = useCallback((data) => {
         if (!data || data.ok === false) {
@@ -251,6 +373,7 @@ window.__ModuleLoader__.load({
           return;
         }
         setInventory(data.inventory ?? null);
+        if (data.update) setUpdate(data.update);
         setError("");
       }, []);
 
@@ -277,6 +400,19 @@ window.__ModuleLoader__.load({
         }
       };
 
+      const runUpdate = async (op, key) => {
+        setBusy(key);
+        try {
+          const data = await callApi({ op });
+          if (data.update) setUpdate(data.update);
+          ingest(data);
+        } catch (err) {
+          setError(String(err && err.message ? err.message : err));
+        } finally {
+          setBusy("");
+        }
+      };
+
       const toggle = async (id, next) => {
         setBusy(`toggle:${id}`);
         try {
@@ -291,6 +427,13 @@ window.__ModuleLoader__.load({
       return h(
         "section",
         { style: styles.wrap },
+        h(UpdateCard, {
+          update,
+          busy,
+          onCheck: () => runUpdate("update.check", "check"),
+          onDownload: () => runUpdate("update.download", "download"),
+          onInstall: () => runUpdate("update.install", "install"),
+        }),
         h(InventoryCard, { inventory, busy, onToggle: toggle, onMode: setMode }),
         error ? h("div", { style: { ...styles.hint, color: "#b4232b" } }, error) : null,
       );

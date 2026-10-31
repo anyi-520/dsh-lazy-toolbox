@@ -128,11 +128,31 @@ mcp:
 | `enable` / `disable` | 打开 / 关闭某个 skill 或 MCP 服务（等价于设置页里的那个开关） |
 | `skill` | 按需取某个 skill 的某一节正文（大纲模式下的「看详情」；`section: "all"` 整篇） |
 | `mode` | 设置某条目加载方式：`mode: "lazy"`（懒加载）或 `"skip"`（跳过懒加载） |
+| `update` | 云更新：`step: "check"` 查新版本、`"download"` 下载解压、`"install"` 覆盖安装（装完需重启） |
 | `discover` | 扫一遍已安装插件自带的 skill / MCP，发现就接管（`dry_run: true` 只看不写） |
 
 > 外部工具链（JDK / Ghidra / rea-agents / JADX / IDA）的检测与一键安装已经**拆成独立插件
 > [`dsh-toolchain`](../dsh-toolchain/README.md)**：那边有独立的 `toolchain` 工具与
 > `设置 → 工具链` 页面。本插件的 `toolbox` 不再提供 `requirements` / `install`。
+
+### 云更新：查新版本 → 看更新内容 → 下载 → 安装 → 提示重启
+
+设置页第一张卡片是「云更新」，它问的是本仓库的 GitHub Release：
+
+```
+当前 v0.5.3 · 有新版本 0.6.0        [检查更新] [下载 v0.6.0] [安装 v0.6.0]
+（下面是这个 Release 的更新内容，可滚动）
+```
+
+- **检查**：`GET /repos/<updateRepo>/releases/latest`，结果落盘在 `<数据目录>/update-state.json`；
+  启动时先显示缓存，再延迟 4 秒后台查一次，不阻塞启动；
+- **下载**：发布包 zip 下到 `<数据目录>/updates/` 并解压好，大小对不上直接报错；
+- **安装**：先把现版本文件备份到 `updates/backup-<版本>-<时间戳>/`，再覆盖插件本体；
+  `node_modules` / `.git` / 数据目录**不碰**；
+- **装完只提示重启**：红字「请关掉 DSH 再打开」——插件不会自己重启进程。
+
+三条路径都行：设置页按钮、命令行 `dsh-lazy-toolbox update check|download|install`、
+AI 侧 `toolbox { action: "update", step: "check" }`。细节见 [docs/update.md](docs/update.md)。
 
 ### 设置 → 懒工具箱：skill 与 MCP 的开关
 
@@ -237,6 +257,9 @@ config:
   mcpIdleMs: 60000             # MCP 连接空闲多久关掉
   maxCatalogItems: 200         # 目录最多列多少条
   autoDetectPluginAssets: true # 自动接管插件自带的 skill / MCP
+  updateRepo: anyi-520/dsh-lazy-toolbox # 云更新查的仓库（可换 fork）
+  updateCheck: true            # 启动时自动检查新版本
+  updateCheckHours: 6          # 隔多久再查
   skillInjectMode: index       # skill 注入方式：index（只给大纲）| full（整篇）
   skillSectionMaxChars: 60000  # action=skill 单次回传上限
   neverLazyBuiltin: true       # 「不做懒加载」内置名单
@@ -291,6 +314,7 @@ dsh-lazy-toolbox disable skill:<name>|mcp:<server>    # 关闭：不进目录、
 dsh-lazy-toolbox wire-profile [--profile <dir>]
 dsh-lazy-toolbox unwire-profile [--profile <dir>]
 dsh-lazy-toolbox discover [--dry-run]             # 扫插件自带的 skill / MCP
+dsh-lazy-toolbox update check|download|install     # 云更新三步
 dsh-lazy-toolbox mode skill:<名字> lazy|skip       # 加载方式：懒加载 / 跳过
 dsh-lazy-toolbox skill <名字> [--section <id>|all]  # 看大纲 / 取某一节
 dsh-lazy-toolbox logs [--lines N] [--raw] [--path]   # 本地运行日志
@@ -349,6 +373,7 @@ lib/
   discover.js    插件内置 skill / MCP 的发现与接管（原地引用）
   outline.js     skill 大纲：骨架 + 每节一句话 + 按需取节
   denylist.js    「不做懒加载」名单（破甲类插件）
+  update.js      云更新：检查 / 下载 / 覆盖安装（先备份，装完提示重启）
   log.js         本地运行日志（JSONL，按天分卷 + 保留期清理）
   util.js        文件、路径、frontmatter 工具
 bin/cli.mjs      命令行

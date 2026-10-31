@@ -74,14 +74,38 @@ function textOf(tree) {
     .join("");
 }
 
+/** 把渲染树里的可点按钮抽出来：{ label, onClick, disabled }。 */
+function buttonsOf(tree) {
+  return tree
+    .filter((node) => typeof node === "object" && node !== null && node.props && typeof node.props.onClick === "function")
+    .map((node) => ({
+      label: node.children.flatMap((child) => (typeof child === "string" ? [child] : [])).join(""),
+      onClick: node.props.onClick,
+      disabled: node.props.disabled,
+    }));
+}
+
 function findBy(tree, predicate) {
   return tree.filter((node) => typeof node === "object" && node !== null && predicate(node.props ?? {}, node));
 }
 
-/** LazyToolboxSection 的 hook 顺序：inventory / error / busy */
-function sectionQueue(inventory = null) {
-  return [inventory, "", ""];
+/** LazyToolboxSection 的 hook 顺序：inventory / error / busy / update */
+function sectionQueue(inventory = null, update = null) {
+  return [inventory, "", "", update];
 }
+
+const UPDATE = {
+  repo: "anyi-520/dsh-lazy-toolbox",
+  current: "0.5.3",
+  latest: "0.6.0",
+  hasUpdate: true,
+  checkedAt: "2026-11-01T10:00:00.000Z",
+  notes: "## 懒工具箱 0.6.0\n\n- 云更新",
+  htmlUrl: "https://github.com/anyi-520/dsh-lazy-toolbox/releases/tag/v0.6.0",
+  assets: [{ name: "dsh-lazy-toolbox-0.6.0.zip", size: 150495, url: "https://example.invalid/x.zip" }],
+  download: null,
+  installed: null,
+};
 
 const INVENTORY = {
   skills: [
@@ -203,4 +227,62 @@ test("已跳过的条目点「懒加载」会 POST mode=lazy", async () => {
   await lazy.props.onClick();
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(JSON.parse(calls[0].options.body), { op: "mode", id: "skill:beta", mode: "lazy" });
+});
+
+
+test("云更新卡片：显示当前/最新、更新内容与三步按钮", () => {
+  const { mod } = loadBundle(sectionQueue(INVENTORY, UPDATE));
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const text = textOf(tree);
+  assert.match(text, /云更新/);
+  assert.match(text, /有新版本 0\.6\.0/);
+  assert.match(text, /当前 v0\.5\.3/);
+  assert.match(text, /云更新/);
+  assert.match(text, /懒工具箱 0\.6\.0/);
+  const labels = buttonsOf(tree).map((button) => button.label);
+  assert.ok(labels.includes("检查更新"), "应有「检查更新」按钮：" + labels.join("|"));
+  assert.ok(labels.includes("下载 v0.6.0"), "有新版时应出现下载按钮");
+  assert.ok(!labels.includes("安装 v0.6.0"), "还没解压时不该出现安装按钮");
+});
+
+test("点「检查更新」POST op=update.check；点「下载」POST op=update.download", async () => {
+  const { mod, net } = loadBundle(sectionQueue(INVENTORY, UPDATE));
+  const calls = [];
+  net.fetch = async (url, options) => {
+    calls.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ ok: true, inventory: INVENTORY, update: { ...UPDATE, download: { version: "0.6.0", extracted: true, packageDir: "D:/updates/0.6.0" } } }) };
+  };
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const byLabel = (label) => buttonsOf(tree).find((button) => button.label === label);
+
+  await byLabel("检查更新").onClick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(calls[0], { op: "update.check" });
+
+  await byLabel("下载 v0.6.0").onClick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(calls[1], { op: "update.download" });
+});
+
+test("下载好了才出现安装按钮；装完显示重启提示", () => {
+  const downloaded = { ...UPDATE, download: { version: "0.6.0", extracted: true, packageDir: "D:/updates/0.6.0" } };
+  const { mod } = loadBundle(sectionQueue(INVENTORY, downloaded));
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const labels = buttonsOf(tree).map((button) => button.label);
+  assert.ok(labels.includes("安装 v0.6.0"), "解压后应可安装：" + labels.join("|"));
+
+  const installed = {
+    ...UPDATE,
+    hasUpdate: false,
+    download: null,
+    installed: { version: "0.6.0", files: 9, backupDir: "D:/updates/backup-0.5.3", restartRequired: true },
+  };
+  const second = loadBundle(sectionQueue(INVENTORY, installed));
+  const component2 = registerComponent(second.mod).component;
+  const text = textOf(render(component2({})));
+  assert.match(text, /已安装 v0\.6\.0/);
+  assert.match(text, /请关掉 DSH 再打开/);
 });
