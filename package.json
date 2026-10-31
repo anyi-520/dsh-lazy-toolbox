@@ -1,0 +1,74 @@
+{
+  "name": "dsh-lazy-toolbox",
+  "version": "0.5.1",
+  "description": "DeepSeek Harness 插件：把 skill 与 MCP 从默认工具定义里抽出来，改成按需热加载的懒工具箱（skill / mcp 分开列出，一句话说明用途，用时注入、用完卸载）。外部工具链面板已拆到独立插件 dsh-toolchain。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "dsh-lazy-toolbox": "bin/cli.mjs"
+  },
+  "files": [
+    "lib",
+    "bin",
+    "client.js",
+    "scripts",
+    "docs",
+    "examples",
+    "README.md",
+    "README.en.md",
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node --test --test-force-exit \"test/*.test.mjs\"",
+    "postinstall": "node scripts/postinstall.mjs",
+    "preuninstall": "node scripts/preuninstall.mjs",
+    "pack:dry": "npm pack --dry-run"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-plugins",
+    "deepseek-harness",
+    "mcp",
+    "skill",
+    "lazy-loading",
+    "tool-search",
+    "context-window",
+    "token-saving"
+  ],
+  "license": "MIT",
+  "author": "dsh-lazy-toolbox contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/<owner>/dsh-lazy-toolbox.git"
+  },
+  "homepage": "https://github.com/<owner>/dsh-lazy-toolbox#readme",
+  "bugs": {
+    "url": "https://github.com/<owner>/dsh-lazy-toolbox/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "install": {
+      "preferred": "npm",
+      "npm": "dsh-lazy-toolbox"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    }
+  }
+}

@@ -1,0 +1,26 @@
+# 示例：把插件接进一个 profile
+#
+# 用法：把下面的 insert 块追加到 $DSH_HOME/profiles/<profile>/cordis.patch.yml 末尾，
+# 并在同目录 package.json 的 dsh.profile.bundles 里加上 "dsh-lazy-toolbox"。
+# 更省事的做法：dsh-lazy-toolbox wire-profile
+
+- insert:
+    - id: lazy-toolbox
+      name: dsh-lazy-toolbox
+      inject: [systemPrompt, tools]
+      config:
+        # 插件库位置，空 = $DSH_HOME/lazy-toolbox
+        dataDir: ""
+        # 启动时把本机 skill / MCP 搬进来
+        autoMigrate: true
+        # 运行期自动导入新 skill 与新 mcp-client 行
+        autoImport: true
+        # 是否连项目目录里的 .dsh/skills 一起接管
+        autoImportProjectSkills: false
+        scanIntervalMs: 5000
+        # 回合结束把注入的定义撤掉（省下一轮的请求体积）
+        autoUnloadOnTurnEnd: true
+        # MCP 连接空闲多久关闭（毫秒）
+        mcpIdleMs: 60000
+        # 目录最多列多少条
+        maxCatalogItems: 200

@@ -1,0 +1,20 @@
+dsh-lazy-toolbox
+Copyright (c) 2026 dsh-lazy-toolbox contributors
+
+This product is a plugin for DeepSeek Harness (DSH). It is not affiliated with,
+endorsed or sponsored by DeepSeek.
+
+Third-party notices
+-------------------
+
+The MCP (Model Context Protocol) JSON-RPC wire format implemented in
+lib/mcp-client.js follows the public specification
+(https://modelcontextprotocol.io). No MCP SDK code is bundled or copied: the
+client is an independent implementation written for this project.
+
+The JSON-Schema subset normalizer in lib/schema.js mirrors the keyword
+restrictions enforced by the DSH ToolRuntime at runtime. It contains no code
+from that project; the keyword list and validation rules are facts about a
+public interface.
+
+All product names, logos and brands are property of their respective owners.
