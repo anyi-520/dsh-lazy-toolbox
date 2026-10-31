@@ -1,7 +1,12 @@
 # dsh-lazy-toolbox
 
 <!-- repo-links -->
-> 仓库：<https://github.com/anyi-520/dsh-lazy-toolbox> · 安装：`dsh plugin add dsh-lazy-toolbox`（或直接 `git clone` 后用 `node bin/cli.mjs wire-profile`）
+> 仓库：<https://github.com/anyi-520/dsh-lazy-toolbox> · 安装：
+> ```bash
+> git clone https://github.com/anyi-520/dsh-lazy-toolbox.git
+> node dsh-lazy-toolbox/bin/cli.mjs wire-profile   # 挂进 profile 并加好配置行
+> ```
+> 也可以下 [Release 附件](https://github.com/anyi-520/dsh-lazy-toolbox/releases/latest) 解压后同样一条命令；npm 发布后可直接 `dsh plugin add dsh-lazy-toolbox`。
 
 > 把 skill 和 MCP 从「每个对话都塞进工具定义」改成「列个目录，用时才注入」。
 

@@ -1,7 +1,12 @@
 # dsh-lazy-toolbox
 
 <!-- repo-links -->
-> Repository: <https://github.com/anyi-520/dsh-lazy-toolbox> · Install: `dsh plugin add dsh-lazy-toolbox` (or `git clone` then `node bin/cli.mjs wire-profile`)
+> Repository: <https://github.com/anyi-520/dsh-lazy-toolbox> · Install:
+> ```bash
+> git clone https://github.com/anyi-520/dsh-lazy-toolbox.git
+> node dsh-lazy-toolbox/bin/cli.mjs wire-profile
+> ```
+> Or grab the [release zip](https://github.com/anyi-520/dsh-lazy-toolbox/releases/latest) and run the same command; `dsh plugin add dsh-lazy-toolbox` works once it is on npm.
 
 > Stop pushing every skill and MCP tool definition into every conversation. Keep a catalog, hot-load on demand.
 
