@@ -1,0 +1,16 @@
+{
+  "name": "example-plugin-with-skill",
+  "version": "1.0.0",
+  "private": true,
+  "description": "示例：一个自带 skill 与 MCP 声明的 DSH 插件，懒工具箱会自动接管它内置的东西",
+  "dsh": {
+    "skills": ["skills"],
+    "mcp": {
+      "example-echo": {
+        "command": "node",
+        "args": ["server.mjs"],
+        "summary": "示例 MCP 服务（一句话用途）"
+      }
+    }
+  }
+}

@@ -126,6 +126,7 @@ mcp:
 | `add_mcp` | 登记并**先连一次**验证 MCP，成功后记录工具数；失败自动回滚 |
 | `remove` | 从插件库删除 skill 文件 / MCP 配置（`ids:["skill:x"]`，也接受单个 `id`） |
 | `enable` / `disable` | 打开 / 关闭某个 skill 或 MCP 服务（等价于设置页里的那个开关） |
+| `discover` | 扫一遍已安装插件自带的 skill / MCP，发现就接管（`dry_run: true` 只看不写） |
 
 > 外部工具链（JDK / Ghidra / rea-agents / JADX / IDA）的检测与一键安装已经**拆成独立插件
 > [`dsh-toolchain`](../dsh-toolchain/README.md)**：那边有独立的 `toolchain` 工具与
@@ -146,6 +147,20 @@ mcp:
 // store.json 片段
 "disabled": { "skills": ["reverse-engineer-anything-cn"], "mcp": [] }
 ```
+
+### 插件自带的 skill / MCP：自动接管
+
+有些插件自己就带能力（`skills/` 目录、`mcp.json`，或 `package.json` 里的 `dsh.skills` / `dsh.mcp`）。
+0.5.2 起这些会被**自动登记进插件库**，不用你一个个 `add_skill`：
+
+- 扫描时机：插件启动时 + 每次扫描（内容没变时按指纹跳过，不重复读盘）；
+- **原地引用**：不复制文件，插件升级后 load 到的就是新内容；
+- 幂等 + 卸载回收：插件没了，条目下一轮自动删掉；你 `disable` / `remove` 过的不再复活；
+- 不想被接管：`package.json` 里写 `"dsh": { "autoDetect": false }`；
+- 想立刻扫：`node bin/cli.mjs discover [--dry-run]`，或让 AI 调 `toolbox { action: "discover" }`。
+
+支持的全部写法、配置字段与例子见 [docs/plugin-assets.md](docs/plugin-assets.md)，
+插件骨架见 [examples/plugin-with-skill/](examples/plugin-with-skill/)。
 
 面板与 AI 看到的是同一份事实：`GET /dsh-lazy-toolbox/api` 返回的 `inventory`，
 改开关走 `POST {"op":"toggle","id":"skill:<名字>","enabled":false}`。
@@ -191,6 +206,7 @@ config:
   autoUnloadOnTurnEnd: true    # 回合结束自动卸载
   mcpIdleMs: 60000             # MCP 连接空闲多久关掉
   maxCatalogItems: 200         # 目录最多列多少条
+  autoDetectPluginAssets: true # 自动接管插件自带的 skill / MCP
   logEnabled: true             # 本地运行日志（只写文件，设置页不显示）
   logDir: ""                   # 日志目录，默认 $DSH_HOME/lazy-toolbox/logs
   logLevel: info               # debug | info | warn | error
@@ -240,6 +256,7 @@ dsh-lazy-toolbox enable skill:<name>|mcp:<server>     # 打开（等同设置页
 dsh-lazy-toolbox disable skill:<name>|mcp:<server>    # 关闭：不进目录、不能 load，文件还在
 dsh-lazy-toolbox wire-profile [--profile <dir>]
 dsh-lazy-toolbox unwire-profile [--profile <dir>]
+dsh-lazy-toolbox discover [--dry-run]             # 扫插件自带的 skill / MCP
 dsh-lazy-toolbox logs [--lines N] [--raw] [--path]   # 本地运行日志
 dsh-lazy-toolbox doctor            # 自检：数据目录、存储、链接状态
 ```
@@ -293,6 +310,7 @@ lib/
   profile.js     profile / cordis.patch.yml 的文本级读写
   schema.js      上游 JSON Schema → DSH 子集
   store.js       插件库（store.json + skills/）
+  discover.js    插件内置 skill / MCP 的发现与接管（原地引用）
   log.js         本地运行日志（JSONL，按天分卷 + 保留期清理）
   util.js        文件、路径、frontmatter 工具
 bin/cli.mjs      命令行

@@ -35,6 +35,7 @@ import {
   removeProfileLink,
 } from "../lib/profile.js";
 import { deleteSkillFiles, importSkillUnit, isSkillName, skillRoots } from "../lib/skills.js";
+import { discoverPluginAssets } from "../lib/discover.js";
 import { agentsHome, dshHome, errorMessage, exists, isDirectory, oneLine, readJson } from "../lib/util.js";
 
 function parseArgs(argv) {
@@ -290,6 +291,27 @@ function cmdLogs(store, flags) {
   print(`共 ${lines.length} 条 · ${log.dir}`);
 }
 
+/**
+ * 扫已安装插件内置的 skill / MCP（`skills/`、`mcp.json`、package.json 的 `dsh.skills` / `dsh.mcp`）。
+ * `--dry-run` 只报告不写入。
+ */
+function cmdDiscover(store, flags) {
+  const dryRun = flags["dry-run"] === true;
+  const result = discoverPluginAssets({
+    store,
+    profiles: profilesFromFlags(flags),
+    dshHome: dshHome(),
+    log: new PluginLog({ dir: path.join(store.root, "logs") }),
+    dryRun,
+  });
+  print(`看过 ${result.candidates} 个插件包${dryRun ? "（dry-run，不写入）" : ""}`);
+  for (const item of result.skills) print(`+ skill:${item.name}\t← ${item.plugin}\t${item.path}`);
+  for (const item of result.servers) print(`+ mcp:${item.name}\t← ${item.plugin}`);
+  for (const item of result.pruned) print(`- ${item.kind}:${item.name}\t← ${item.plugin || "已卸载"}`);
+  for (const item of result.skipped) print(`· 跳过 ${item.plugin} · ${item.path}：${item.reason}`);
+  if (result.skills.length + result.servers.length + result.pruned.length === 0) print("没有发现新的内置资产。");
+}
+
 function formatLogLine(line) {
   try {
     const row = JSON.parse(line);
@@ -334,9 +356,11 @@ async function main() {  const { command, positional, flags } = parseArgs(proces
       return cmdDoctor(store, flags);
     case "logs":
       return cmdLogs(store, flags);
+    case "discover":
+      return cmdDiscover(store, flags);
     default:
       print(`未知命令：${command}`);
-      print("可用：status | list | migrate [--dry-run] | restore [--skills-only|--mcp-only] | add-skill <path> | add-mcp <name> | remove <id> | enable <id> | disable <id> | logs [--lines N] [--path] | wire-profile | unwire-profile | doctor");
+      print("可用：status | list | migrate [--dry-run] | restore [--skills-only|--mcp-only] | add-skill <path> | add-mcp <name> | remove <id> | enable <id> | disable <id> | discover [--dry-run] | logs [--lines N] [--path] | wire-profile | unwire-profile | doctor");
       process.exitCode = 1;
   }
 }

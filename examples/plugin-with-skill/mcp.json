@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "example-file-echo": {
+      "command": "node",
+      "args": ["server.mjs"],
+      "env": {
+        "EXAMPLE_MODE": "echo"
+      },
+      "summary": "示例 MCP 服务：用 mcp.json 声明的写法"
+    }
+  }
+}

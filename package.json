@@ -1,6 +1,6 @@
 {
   "name": "dsh-lazy-toolbox",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "DeepSeek Harness 插件：把 skill 与 MCP 从默认工具定义里抽出来，改成按需热加载的懒工具箱（skill / mcp 分开列出，一句话说明用途，用时注入、用完卸载）。外部工具链面板已拆到独立插件 dsh-toolchain。",
   "type": "module",
   "main": "lib/index.js",

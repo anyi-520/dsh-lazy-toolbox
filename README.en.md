@@ -111,12 +111,29 @@ config:
   autoUnloadOnTurnEnd: true
   mcpIdleMs: 60000
   maxCatalogItems: 200
+  autoDetectPluginAssets: true     # adopt skills / MCPs bundled in plugins
   logEnabled: true                # local run log, file only (never shown in Settings)
   logDir: ""                      # default $DSH_HOME/lazy-toolbox/logs
   logLevel: info                  # debug | info | warn | error
   logMaxBytes: 2097152            # per-file cap, overflow rolls to .1 .2 …
   logRetentionDays: 14            # 0 disables pruning
 ```
+
+## Bundled skills and MCP servers (auto-adopted)
+
+Plugins often ship their own capabilities: a `skills/` directory, an `mcp.json`, or
+`dsh.skills` / `dsh.mcp` inside `package.json`. Since 0.5.2 the toolbox registers those
+into its own library automatically, so they show up in the catalog and can be `load`ed
+like anything else.
+
+- Scanned at startup and on every refresh (fingerprint-based, unchanged trees are skipped).
+- **Referenced in place** — nothing is copied, so a plugin upgrade is picked up immediately.
+- Idempotent; entries are pruned when the plugin disappears; `disable` / `remove` wins over re-adoption.
+- Opt out per plugin with `"dsh": { "autoDetect": false }`.
+- Run it manually with `node bin/cli.mjs discover [--dry-run]` or `toolbox { action: "discover" }`.
+
+Full matrix of supported layouts: [docs/plugin-assets.md](docs/plugin-assets.md) (Chinese);
+skeleton example: [examples/plugin-with-skill/](examples/plugin-with-skill/).
 
 ## Run log (local only)
 
@@ -140,7 +157,7 @@ Inspect with `dsh-lazy-toolbox logs [--lines N] [--raw] [--path]`.
 ## CLI
 
 ```bash
-dsh-lazy-toolbox status | list | doctor
+dsh-lazy-toolbox status | list | doctor | discover [--dry-run]
 dsh-lazy-toolbox migrate [--dry-run] [--project]
 dsh-lazy-toolbox restore [--skills-only|--mcp-only]
 dsh-lazy-toolbox add-skill <path> [--name n] [--summary "one line"]

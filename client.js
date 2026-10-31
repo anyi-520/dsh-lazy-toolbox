@@ -145,6 +145,9 @@ window.__ModuleLoader__.load({
                         "div",
                         { style: { fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 } },
                         h("span", { style: { fontFamily: "ui-monospace, Menlo, monospace" } }, row.name),
+                        row.external && row.plugin
+                          ? h("span", { style: { ...styles.pillBase, color: COLORS.off, fontSize: 10 } }, `插件 ${row.plugin.replace(/^@?deepseek-ai\//, "")}`)
+                          : null,
                         row.enabled ? null : h("span", { style: { ...styles.pillBase, color: COLORS.off, fontSize: 10 } }, "已关闭"),
                       ),
                       h("div", { style: { ...styles.hint, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, row.summary || "（没有说明）"),

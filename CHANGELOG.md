@@ -2,6 +2,38 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.5.2] - 2026-10-31
+
+**插件自带的 skill / MCP 会被自动接管。**
+
+### 新增
+
+- `lib/discover.js`：扫 profile 里已安装的插件包（`node_modules` 一层 + `$DSH_HOME/plugins/*`），
+  识别内置资产并登记进插件库：
+  - `package.json` 的 `dsh.skills` / `dsh.skill` / `dsh.mcp` / `dsh.mcpServers`；
+  - 约定目录 `skills/`、`dsh/skills/`、`.dsh/skills/`（目录自身是 skill，或每个子目录一个）；
+  - 配置文件 `mcp.json`、`.dsh/mcp.json`、`dsh/mcp.json`、`mcp-servers.json`；
+  - `"dsh": { "autoDetect": false }` 可让某个插件退出接管。
+- 接管方式为**原地引用**：`storePath` 直接指向插件里的 skill 目录，不复制文件，插件升级即生效；
+  `remove` 这类条目时只删登记，不动插件文件。
+- 幂等与回收：内容指纹没变就跳过读盘；插件卸载后条目在下一轮扫描里回收；
+  在设置里关掉（`disable`）或 `remove` 过的条目不会被自动复活。
+- 触发点：`apply` 启动时、`agent/pre-step` 节流扫描；另有 `toolbox { action: "discover" }`、
+  CLI `dsh-lazy-toolbox discover [--dry-run]`、导出函数 `discoverNow()`。
+- 配置项 `autoDetectPluginAssets`（默认 `true`）。
+- 设置页清单与 `toolbox list` / 目录会标出来源：`〔插件 <包名>〕`（前端为「插件 xxx」小标签，
+  API 字段新增 `plugin` / `external`）。
+- 文档：`docs/plugin-assets.md`（支持的写法、例子、取舍）、`docs/介绍.md` 与
+  `docs/INTRO.en.md`（中英介绍文）、`examples/plugin-with-skill/`（可复制的插件骨架）。
+- 测试：`test/discover.test.mjs`（8 项）——发现、原地引用、幂等、尊重开关、卸载回收、
+  删除不动插件文件、MCP 来源、`package.json` 带 BOM 也能识别。全量 **51 项**通过。
+
+### 修复
+
+- `readJson` / `readText` 现在会剥掉 UTF-8 BOM：被记事本或 PowerShell 存过的
+  `package.json` 之前会让 `isProfileDir` 直接返回 false、插件被静默跳过。
+- `profile.js` 的三处 `JSON.parse(readFileSync(...))` 改为走 `readJson`，同一原因。
+
 ## [0.5.1] - 2026-10-31
 
 **本机运行日志：功能调用与错误全部落本地文件，设置页不显示。**
