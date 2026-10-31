@@ -112,12 +112,49 @@ config:
   mcpIdleMs: 60000
   maxCatalogItems: 200
   autoDetectPluginAssets: true     # adopt skills / MCPs bundled in plugins
+  skillInjectMode: index           # "index" (outline only) | "full"
+  skillSectionMaxChars: 60000
+  neverLazyBuiltin: true
+  neverLazyExtra: []
   logEnabled: true                # local run log, file only (never shown in Settings)
   logDir: ""                      # default $DSH_HOME/lazy-toolbox/logs
   logLevel: info                  # debug | info | warn | error
   logMaxBytes: 2097152            # per-file cap, overflow rolls to .1 .2 …
   logRetentionDays: 14            # 0 disables pruning
 ```
+
+## Outline-only skill injection
+
+A 30k-token skill (say, "comic-drama production") is **not** dumped into the context on `load`.
+You get the one-line purpose, an **outline** (one line per branch, each with a one-sentence gist),
+and a way to pull the rest:
+
+```jsonc
+toolbox { "action": "skill", "id": "skill:ds", "section": "2" }   // just that branch
+toolbox { "action": "skill", "id": "skill:ds", "section": "all" } // the whole file
+```
+
+No extra tool definition is added — section reads go through the resident `toolbox`.
+Want the old behaviour back: per skill `loadMode: "full"` in `store.json`, or global
+`skillInjectMode: full`. Details: [docs/skill-index.md](docs/skill-index.md) (Chinese).
+
+## Load mode: lazy / skip
+
+Each row in Settings has a two-option selector: **Lazy** (catalogued, injected on demand) or
+**Skip** (never lazily loaded: hidden from the catalog, `load` refused, files kept).
+Equivalent: `toolbox { action: "mode", ids: ["skill:ds"], mode: "skip" }` or
+`dsh-lazy-toolbox mode skill:ds skip`.
+
+## Never-lazy list (jailbreak-style plugins)
+
+Some plugins already hook their own prompt text into the system prompt, or ship a skill about
+bypassing restrictions. Their bundled skills/MCPs are **not adopted** (no double injection, and no
+one-line summary coaxing the model into loading them):
+
+- builtin packages: `dsh-purge`, `dsh-jailbreak`, `dsh-uncensored`, `dsh-prompt-inject`, …
+- builtin patterns: `jailbreak`, `破甲`, `uncensor`, `nsfw`, `prompt-inject`, `armor-break`, …
+- extend with `neverLazyExtra: ["my-plugin"]`, disable builtins with `neverLazyBuiltin: false`;
+- it only affects adoption — no file is ever deleted. Details: [docs/never-lazy.md](docs/never-lazy.md) (Chinese).
 
 ## Bundled skills and MCP servers (auto-adopted)
 

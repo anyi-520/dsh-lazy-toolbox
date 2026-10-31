@@ -143,16 +143,18 @@ test("apply 在设置页登记「懒工具箱」一节（order 60）", () => {
   assert.equal(typeof registrations[0].component, "function");
 });
 
-test("页面把 skill 与 MCP 都列出来，关掉的显示「已关闭」，不再有工具链内容", () => {
+test("页面把 skill 与 MCP 都列出来，每条带「懒加载 / 跳过」选择器", () => {
   const { mod } = loadBundle(sectionQueue(INVENTORY));
   const { component } = registerComponent(mod);
 
   const tree = render(component({}));
-  const switches = findBy(tree, (props) => props.role === "switch");
-  assert.equal(switches.length, 3, "两个 skill + 一个 MCP 各一个开关");
+  const groups = findBy(tree, (props) => props.role === "radiogroup");
+  assert.equal(groups.length, 3, "两个 skill + 一个 MCP 各一个选择器");
+  const radios = findBy(tree, (props) => props.role === "radio");
+  assert.equal(radios.length, 6, "每条两个选项：懒加载 / 跳过");
   assert.deepEqual(
-    switches.map((node) => node.props["aria-checked"]),
-    ["true", "false", "false"],
+    radios.filter((node) => node.props["aria-checked"] === "true").map((node) => node.props["data-mode"]),
+    ["lazy", "skip", "skip"],
   );
 
   const text = textOf(tree);
@@ -161,13 +163,14 @@ test("页面把 skill 与 MCP 都列出来，关掉的显示「已关闭」，�
   assert.match(text, /alpha/);
   assert.match(text, /rea/);
   assert.match(text, /207 个工具/);
-  assert.match(text, /已关闭/);
+  assert.match(text, /懒加载/);
+  assert.match(text, /跳过/);
   // 工具链面板已拆成独立插件，这里不该再出现
   assert.doesNotMatch(text, /工具链/);
   assert.doesNotMatch(text, /Ghidra/);
 });
 
-test("点开关会 POST op=toggle 到宿主端点", async () => {
+test("选「跳过」会 POST op=mode 到宿主端点", async () => {
   const { mod, net } = loadBundle(sectionQueue(INVENTORY));
   const calls = [];
   net.fetch = async (url, options) => {
@@ -176,12 +179,28 @@ test("点开关会 POST op=toggle 到宿主端点", async () => {
   };
   const { component } = registerComponent(mod);
   const tree = render(component({}));
-  const [firstSwitch] = findBy(tree, (props) => props.role === "switch");
-  await firstSwitch.props.onClick();
+  // 第一个条目（alpha，开着）里点「跳过」
+  const skip = findBy(tree, (props) => props.role === "radio" && props["data-mode"] === "skip")[0];
+  await skip.props.onClick();
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.equal(calls.length, 1);
   assert.match(String(calls[0].url), /\/dsh-lazy-toolbox\/api$/);
   assert.equal(calls[0].options.method, "POST");
-  assert.deepEqual(JSON.parse(calls[0].options.body), { op: "toggle", id: "skill:alpha", enabled: false });
+  assert.deepEqual(JSON.parse(calls[0].options.body), { op: "mode", id: "skill:alpha", mode: "skip" });
+});
+
+test("已跳过的条目点「懒加载」会 POST mode=lazy", async () => {
+  const { mod, net } = loadBundle(sectionQueue(INVENTORY));
+  const calls = [];
+  net.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, json: async () => ({ ok: true, inventory: INVENTORY }) };
+  };
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const lazy = findBy(tree, (props) => props.role === "radio" && props["data-mode"] === "lazy")[1];
+  await lazy.props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(JSON.parse(calls[0].options.body), { op: "mode", id: "skill:beta", mode: "lazy" });
 });

@@ -126,6 +126,8 @@ mcp:
 | `add_mcp` | 登记并**先连一次**验证 MCP，成功后记录工具数；失败自动回滚 |
 | `remove` | 从插件库删除 skill 文件 / MCP 配置（`ids:["skill:x"]`，也接受单个 `id`） |
 | `enable` / `disable` | 打开 / 关闭某个 skill 或 MCP 服务（等价于设置页里的那个开关） |
+| `skill` | 按需取某个 skill 的某一节正文（大纲模式下的「看详情」；`section: "all"` 整篇） |
+| `mode` | 设置某条目加载方式：`mode: "lazy"`（懒加载）或 `"skip"`（跳过懒加载） |
 | `discover` | 扫一遍已安装插件自带的 skill / MCP，发现就接管（`dry_run: true` 只看不写） |
 
 > 外部工具链（JDK / Ghidra / rea-agents / JADX / IDA）的检测与一键安装已经**拆成独立插件
@@ -147,6 +149,34 @@ mcp:
 // store.json 片段
 "disabled": { "skills": ["reverse-engineer-anything-cn"], "mcp": [] }
 ```
+
+### skill 只注入大纲，正文按需取
+
+一个 3 万 token 的 skill（比如「漫剧制作流程」），`load` 时**不整篇塞进上下文**，只给：
+
+- 一句话用途（本来就在目录里）；
+- **大纲**：每个分支（小节）一行，带一句人话概括；
+- 取节方式：`toolbox { action: "skill", id: "skill:ds", section: "2" }` 只回「分镜」那一节，
+  `section: "all"` 才整篇。
+
+**没有多一个工具定义**——取节走的是常驻的 `toolbox`。细节见 [docs/skill-index.md](docs/skill-index.md)。
+要整篇：单个 skill 在 `store.json` 写 `loadMode: "full"`，或全局 `skillInjectMode: full`。
+
+### 加载方式：懒加载 / 跳过
+
+设置页每个条目右边是两段式选择器：**懒加载**（进目录、按需注入）或 **跳过**
+（不做懒加载：不进目录、`load` 拒绝，文件与配置都还在）。AI 侧等价动作是
+`toolbox { action: "mode", ids: [...], mode: "skip" }`，命令行是 `dsh-lazy-toolbox mode <id> skip`。
+
+### 「不做懒加载」名单（破甲类插件）
+
+有些插件自己就往系统提示词里 hook 一大坨提示词，或自带「教怎么绕过限制」的 skill。
+这类插件的内置资产**不接管、不进目录**（避免和插件自己的注入打架、也避免一句话骗过 AI）：
+
+- 内置名单：`dsh-purge`、`dsh-jailbreak`、`dsh-uncensored`、`dsh-prompt-inject` 等；
+- 内置模式：包名/条目名含 `jailbreak` / `破甲` / `越狱` / `uncensor` / `nsfw` / `prompt-inject` 等；
+- 追加自己的：`neverLazyExtra: ["my-plugin"]`；关掉内置名单：`neverLazyBuiltin: false`；
+- 只影响懒工具箱的接管，不删任何文件。细节见 [docs/never-lazy.md](docs/never-lazy.md)。
 
 ### 插件自带的 skill / MCP：自动接管
 
@@ -207,6 +237,10 @@ config:
   mcpIdleMs: 60000             # MCP 连接空闲多久关掉
   maxCatalogItems: 200         # 目录最多列多少条
   autoDetectPluginAssets: true # 自动接管插件自带的 skill / MCP
+  skillInjectMode: index       # skill 注入方式：index（只给大纲）| full（整篇）
+  skillSectionMaxChars: 60000  # action=skill 单次回传上限
+  neverLazyBuiltin: true       # 「不做懒加载」内置名单
+  neverLazyExtra: []           # 额外名单（包名子串）
   logEnabled: true             # 本地运行日志（只写文件，设置页不显示）
   logDir: ""                   # 日志目录，默认 $DSH_HOME/lazy-toolbox/logs
   logLevel: info               # debug | info | warn | error
@@ -257,6 +291,8 @@ dsh-lazy-toolbox disable skill:<name>|mcp:<server>    # 关闭：不进目录、
 dsh-lazy-toolbox wire-profile [--profile <dir>]
 dsh-lazy-toolbox unwire-profile [--profile <dir>]
 dsh-lazy-toolbox discover [--dry-run]             # 扫插件自带的 skill / MCP
+dsh-lazy-toolbox mode skill:<名字> lazy|skip       # 加载方式：懒加载 / 跳过
+dsh-lazy-toolbox skill <名字> [--section <id>|all]  # 看大纲 / 取某一节
 dsh-lazy-toolbox logs [--lines N] [--raw] [--path]   # 本地运行日志
 dsh-lazy-toolbox doctor            # 自检：数据目录、存储、链接状态
 ```
@@ -311,6 +347,8 @@ lib/
   schema.js      上游 JSON Schema → DSH 子集
   store.js       插件库（store.json + skills/）
   discover.js    插件内置 skill / MCP 的发现与接管（原地引用）
+  outline.js     skill 大纲：骨架 + 每节一句话 + 按需取节
+  denylist.js    「不做懒加载」名单（破甲类插件）
   log.js         本地运行日志（JSONL，按天分卷 + 保留期清理）
   util.js        文件、路径、frontmatter 工具
 bin/cli.mjs      命令行

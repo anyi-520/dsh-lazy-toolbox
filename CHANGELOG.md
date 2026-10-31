@@ -2,6 +2,39 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.5.3] - 2026-10-31
+
+**skill 只注入大纲（正文按需取）、每条目可选「懒加载 / 跳过」、破甲类插件进「不做懒加载」名单。**
+
+### 新增
+
+- `lib/outline.js`：把 SKILL.md 解析成大纲——按 ATX 标题分节、算出层级编号（`1` / `1.1`）、
+  每节取第一段第一句作为一句话概括（跳过代码块/表格）、支持按 id 或标题片段取某一节，
+  `section: "all"` 取整篇。代码块里的 `#` 不算标题，标题自带序号显示时去掉。
+- `load skill` 默认改为**大纲模式**：注入「一句话 + 每节一行 + 取节指路 + 资源目录」，
+  3 万 token 的 skill 变成几百 token；`inject.js` 记录 `mode: "index"`。
+- 新增 `toolbox { action: "skill", id, section }`：按需拉取某一节原文（或整篇），
+  **不新增任何工具定义**（走常驻的 `toolbox`）；单次回传上限 `skillSectionMaxChars`（默认 6 万字符）。
+- 新增 `toolbox { action: "mode", ids, mode: "lazy"|"skip" }` 与设置页两段式选择器
+  （懒加载 / 跳过），CLI `mode <id> lazy|skip`；与 `enable` / `disable` 同源（`disabled` 列表）。
+- `lib/denylist.js`：「不做懒加载」名单。命中名单的插件，其内置 skill / MCP **不接管、不登记、
+  不进目录**（这类插件自己 hook 注入系统提示词，接管会双重注入）；之前版本已接管过的条目
+  在下一轮扫描里撤掉登记（不删插件文件）。
+  - 内置包名：`dsh-purge`、`dsh-jailbreak`、`dsh-break-armor`、`dsh-unfiltered`、`dsh-uncensored`、
+    `dsh-prompt-inject` 等；内置正则：`jailbreak`、`破甲`、`越狱`、`uncensor`、`nsfw`、
+    `prompt-inject`、`armor-break`、`dan`、`safety-bypass` 等。
+  - 配置 `neverLazyBuiltin` / `neverLazyExtra`；日志事件 `discover.blocked`。
+- CLI 增加 `skill <名字> [--section <id>|all]`、`mode <id> <lazy|skip>`。
+- 文档：[docs/skill-index.md](docs/skill-index.md)（大纲模式）、[docs/never-lazy.md](docs/never-lazy.md)
+  （名单与加载方式），README 中英同步。
+- 测试：新增 `test/outline.test.mjs`（11 项）、`test/neverlazy.test.mjs`（5 项），
+  client 测试改为校验选择器与 `op=mode`。全量 **68 项** 通过。
+
+### 变更
+
+- 设置页的开关改为「懒加载 / 跳过」两段式选择器（语义不变，`aria-checked` 语义保留在 radio 上）。
+- `load skill` 的返回文案改为「已注入 skill 大纲（N 个分支，正文 X 字符没有整篇塞进来）」。
+
 ## [0.5.2] - 2026-10-31
 
 **插件自带的 skill / MCP 会被自动接管。**

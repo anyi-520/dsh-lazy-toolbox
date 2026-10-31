@@ -102,10 +102,62 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * 加载方式选择器：懒加载 / 跳过。
+     * 「跳过」= 不做懒加载：不进系统提示目录、不许 load，文件与配置都还在。
+     */
+    function ModeSelector({ mode, disabled, onChange }) {
+      const options = [
+        ["lazy", "懒加载"],
+        ["skip", "跳过"],
+      ];
+      return h(
+        "div",
+        {
+          role: "radiogroup",
+          style: {
+            display: "inline-flex",
+            alignItems: "stretch",
+            border: "0.5px solid var(--dsw-alias-border, rgba(0,0,0,.14))",
+            borderRadius: 999,
+            overflow: "hidden",
+            flex: "0 0 auto",
+          },
+        },
+        ...options.map(([value, label]) =>
+          h(
+            "button",
+            {
+              key: value,
+              type: "button",
+              role: "radio",
+              "aria-checked": mode === value ? "true" : "false",
+              "data-mode": value,
+              title: value === "lazy" ? "懒加载：进目录，需要时按需注入" : "跳过：不做懒加载，不进目录、不许注入",
+              disabled: Boolean(disabled),
+              onClick: () => {
+                if (!disabled && mode !== value) onChange(value);
+              },
+              style: {
+                fontSize: 11,
+                lineHeight: "18px",
+                padding: "2px 9px",
+                border: "none",
+                cursor: disabled ? "default" : "pointer",
+                background: mode === value ? "var(--dsw-alias-button-primary-fill, #111)" : "transparent",
+                color: mode === value ? "var(--dsw-alias-label-primary-foreground, #fff)" : "var(--dsw-alias-label-tertiary, #777)",
+              },
+            },
+            label,
+          ),
+        ),
+      );
+    }
+
+    /**
      * skill 与 MCP 的开关面板：这份清单和 AI 的 toolbox action=list 同源（store.json），
      * 关掉的条目会从系统提示的目录里消失，也不再允许 load。
      */
-    function InventoryCard({ inventory, busy, onToggle }) {
+    function InventoryCard({ inventory, busy, onToggle, onMode }) {
       const skills = inventory?.skills ?? [];
       const mcp = inventory?.mcp ?? [];
       const counts = inventory?.counts ?? { skills: 0, mcp: 0, skillsOn: 0, mcpOn: 0 };
@@ -155,10 +207,10 @@ window.__ModuleLoader__.load({
                     kind === "mcp"
                       ? h("span", { style: styles.hint }, `${row.toolCount || 0} 个工具 · ${row.transport || "stdio"}`)
                       : h("span", { style: styles.hint }, row.source || ""),
-                    h(Switch, {
-                      checked: row.enabled,
+                    h(ModeSelector, {
+                      mode: row.enabled ? "lazy" : "skip",
                       disabled: busy !== "",
-                      onChange: (next) => onToggle(row.id, next),
+                      onChange: (next) => onMode(row.id, next),
                     }),
                   ),
                 ),
@@ -181,7 +233,7 @@ window.__ModuleLoader__.load({
         h(
           "p",
           { style: styles.desc },
-          "关掉不等于卸载：文件、配置都在，只是不再出现在系统提示的目录里，AI 也不能 load。想省 token 就先关掉暂时用不到的。",
+          "每条右边可以选加载方式：懒加载（进目录，需要时才按需注入，只给大纲）或 跳过（不做懒加载：不进目录、不许注入，文件与配置都还在）。破甲类插件自带的 skill / MCP 会自动落在「跳过」。",
         ),
         group("skills", `${counts.skills} 个`, skills, "skill"),
         group("mcp", `${counts.mcp} 个`, mcp, "mcp"),
@@ -214,6 +266,17 @@ window.__ModuleLoader__.load({
         refresh();
       }, [refresh]);
 
+      const setMode = async (id, mode) => {
+        setBusy(`mode:${id}`);
+        try {
+          ingest(await callApi({ op: "mode", id, mode }));
+        } catch (err) {
+          setError(String(err && err.message ? err.message : err));
+        } finally {
+          setBusy("");
+        }
+      };
+
       const toggle = async (id, next) => {
         setBusy(`toggle:${id}`);
         try {
@@ -228,7 +291,7 @@ window.__ModuleLoader__.load({
       return h(
         "section",
         { style: styles.wrap },
-        h(InventoryCard, { inventory, busy, onToggle: toggle }),
+        h(InventoryCard, { inventory, busy, onToggle: toggle, onMode: setMode }),
         error ? h("div", { style: { ...styles.hint, color: "#b4232b" } }, error) : null,
       );
     }

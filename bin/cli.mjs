@@ -34,7 +34,8 @@ import {
   removeProfileBundles,
   removeProfileLink,
 } from "../lib/profile.js";
-import { deleteSkillFiles, importSkillUnit, isSkillName, skillRoots } from "../lib/skills.js";
+import { deleteSkillFiles, importSkillUnit, isSkillName, loadSkill, skillRoots } from "../lib/skills.js";
+import { readSection, renderOutline } from "../lib/outline.js";
 import { discoverPluginAssets } from "../lib/discover.js";
 import { agentsHome, dshHome, errorMessage, exists, isDirectory, oneLine, readJson } from "../lib/util.js";
 
@@ -106,6 +107,46 @@ function cmdToggle(store, positional, enabled) {
     }
     print(`${rawId}: ${enabled ? "已打开" : "已关闭"}`);
   }
+}
+
+/** 设置加载方式：lazy（懒加载，进目录）| skip（跳过，不进目录、不许注入）。 */
+function cmdMode(store, positional) {
+  const [rawId, mode] = positional;
+  if (!rawId || !mode) throw new Error("用法：mode skill:<名字>|mcp:<服务> lazy|skip");
+  if (mode !== "lazy" && mode !== "skip") throw new Error('mode 只能是 "lazy" 或 "skip"');
+  const [kind, ...rest] = rawId.split(":");
+  const name = rest.join(":");
+  if (kind === "skill") {
+    if (!store.getSkill(name)) throw new Error(`没有 skill:${name}`);
+    store.setDisabled("skill", name, mode === "skip");
+  } else if (kind === "mcp") {
+    if (!store.getServer(name)) throw new Error(`没有 mcp:${name}`);
+    store.setDisabled("mcp", name, mode === "skip");
+  } else {
+    throw new Error(`不认识的 id：${rawId}（应为 skill:<名字> 或 mcp:<服务>）`);
+  }
+  print(`${rawId}: ${mode}`);
+}
+
+/** 看 skill 的大纲；`--section <id>` 取某一节全文，`--section all` 整篇。 */
+function cmdSkill(store, positional, flags) {
+  const name = positional[0];
+  if (!name) throw new Error("用法：skill <名字> [--section <id>|all]");
+  store.getSkill(name) ?? (() => {
+    throw new Error(`没有 skill:${name}`);
+  })();
+  const skill = loadSkill(store, name);
+  const section = typeof flags.section === "string" ? flags.section : "";
+  const outcome = readSection(skill.content, section);
+  if (outcome.kind === "missing") throw new Error(`没有这一节 "${section}"；可选：${outcome.available.join(" / ")}`);
+  if (outcome.kind === "outline") {
+    print(renderOutline(name, skill.summary, outcome.outline, { resourceDir: skill.resourceDir }));
+    return;
+  }
+  print(`# ${name} · ${outcome.kind === "all" ? "全文" : `${outcome.id} ${outcome.title}`}`);
+  print("");
+  print(outcome.text.trimEnd());
+  if (outcome.kind === "all") print(`\n（整篇 ${skill.content.length} 字符）`);
 }
 
 function cmdList(store) {
@@ -358,9 +399,13 @@ async function main() {  const { command, positional, flags } = parseArgs(proces
       return cmdLogs(store, flags);
     case "discover":
       return cmdDiscover(store, flags);
+    case "mode":
+      return cmdMode(store, positional);
+    case "skill":
+      return cmdSkill(store, positional, flags);
     default:
       print(`未知命令：${command}`);
-      print("可用：status | list | migrate [--dry-run] | restore [--skills-only|--mcp-only] | add-skill <path> | add-mcp <name> | remove <id> | enable <id> | disable <id> | discover [--dry-run] | logs [--lines N] [--path] | wire-profile | unwire-profile | doctor");
+      print("可用：status | list | migrate [--dry-run] | restore [--skills-only|--mcp-only] | add-skill <path> | add-mcp <name> | remove <id> | enable <id> | disable <id> | mode <id> <lazy|skip> | skill <名字> [--section id] | discover [--dry-run] | logs [--lines N] [--path] | wire-profile | unwire-profile | doctor");
       process.exitCode = 1;
   }
 }
