@@ -47,11 +47,11 @@
   "author": "dsh-lazy-toolbox contributors",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/<owner>/dsh-lazy-toolbox.git"
+    "url": "git+https://github.com/anyi-520/dsh-lazy-toolbox.git"
   },
-  "homepage": "https://github.com/<owner>/dsh-lazy-toolbox#readme",
+  "homepage": "https://github.com/anyi-520/dsh-lazy-toolbox#readme",
   "bugs": {
-    "url": "https://github.com/<owner>/dsh-lazy-toolbox/issues"
+    "url": "https://github.com/anyi-520/dsh-lazy-toolbox/issues"
   },
   "publishConfig": {
     "access": "public"

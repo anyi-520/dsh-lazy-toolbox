@@ -1,5 +1,8 @@
 # dsh-lazy-toolbox
 
+<!-- repo-links -->
+> 仓库：<https://github.com/anyi-520/dsh-lazy-toolbox> · 安装：`dsh plugin add dsh-lazy-toolbox`（或直接 `git clone` 后用 `node bin/cli.mjs wire-profile`）
+
 > 把 skill 和 MCP 从「每个对话都塞进工具定义」改成「列个目录，用时才注入」。
 
 DSH（DeepSeek Harness）默认会把所有 skill、所有 MCP 服务的**完整工具定义**（名字 + 描述 + 参数 schema）

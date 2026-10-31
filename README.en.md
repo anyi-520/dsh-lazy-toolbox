@@ -1,5 +1,8 @@
 # dsh-lazy-toolbox
 
+<!-- repo-links -->
+> Repository: <https://github.com/anyi-520/dsh-lazy-toolbox> · Install: `dsh plugin add dsh-lazy-toolbox` (or `git clone` then `node bin/cli.mjs wire-profile`)
+
 > Stop pushing every skill and MCP tool definition into every conversation. Keep a catalog, hot-load on demand.
 
 DeepSeek Harness (DSH) ships the full tool definition — name, description, JSON schema — of every skill
