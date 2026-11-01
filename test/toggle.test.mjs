@@ -131,7 +131,7 @@ test("store 记住开关状态，重开也还在", () => {
   assert.equal(store.setDisabled("skill", "toggle-skill", true), false, "重复关不算变化");
 
   const reopened = new Store(dataDir);
-  assert.deepEqual(reopened.listDisabled(), { skills: ["toggle-skill"], mcp: [] });
+  assert.deepEqual(reopened.listDisabled(), { skills: ["toggle-skill"], mcp: [], groups: [] });
 
   // 删掉条目时顺手清掉它的开关记录，别留孤儿
   reopened.dropSkill("toggle-skill");

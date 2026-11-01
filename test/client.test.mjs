@@ -61,7 +61,7 @@ function loadBundle(hookQueue = []) {
 
 /** 递归渲染：函数式组件当普通函数调用（它们只用 hook，不依赖渲染器）。 */
 function render(node, depth = 0) {
-  if (node == null || depth > 30) return [];
+  if (node == null || depth > 80) return [];
   if (Array.isArray(node)) return node.flatMap((child) => render(child, depth + 1));
   if (typeof node === "string" || typeof node === "number") return [node];
   if (typeof node.type === "function") return render(node.type(node.props), depth + 1);
@@ -182,8 +182,9 @@ test("页面把 skill 与 MCP 都列出来，每条带「懒加载 / 跳过」�
   );
 
   const text = textOf(tree);
-  assert.match(text, /skill 与 MCP 开关/);
-  assert.match(text, /开着 1 skill \/ 0 MCP/);
+  assert.match(text, /插件工具 \/ skill \/ MCP 开关/);
+  assert.match(text, /开着 0 组插件工具/);
+  assert.match(text, /开着 0 组插件工具 \/ 1 skill \/ 0 MCP/);
   assert.match(text, /alpha/);
   assert.match(text, /rea/);
   assert.match(text, /207 个工具/);
@@ -285,4 +286,54 @@ test("下载好了才出现安装按钮；装完显示重启提示", () => {
   const text = textOf(render(component2({})));
   assert.match(text, /已安装 v0\.6\.0/);
   assert.match(text, /请关掉 DSH 再打开/);
+});
+
+
+const INVENTORY_WITH_GROUP = {
+  ...INVENTORY,
+  groups: [
+    {
+      id: "group:memstudio",
+      category: "plugin",
+      name: "memstudio",
+      summary: "内存工作台：附加进程 / 读写搜索 / 断点 / 指针链",
+      enabled: true,
+      toolCount: 17,
+      toolNames: ["mem_read", "mem_write"],
+      plugin: "dsh-memstudio",
+      external: true,
+    },
+  ],
+  counts: { groups: 1, skills: 2, mcp: 1, groupsOn: 1, skillsOn: 1, mcpOn: 0 },
+};
+
+test("第三类「插件工具」在设置页单独成组，显示托管工具数与插件名", () => {
+  const { mod } = loadBundle(sectionQueue(INVENTORY_WITH_GROUP));
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const text = textOf(tree);
+  assert.match(text, /开着 1 组插件工具 \/ 1 skill \/ 0 MCP/);
+  assert.match(text, /插件工具1 组/, "应有「插件工具」分组标题与数量");
+  assert.match(text, /memstudio/);
+  assert.match(text, /托管 17 个工具/);
+  assert.match(text, /插件 dsh-memstudio/);
+  const labels = buttonsOf(tree).map((b) => b.label);
+  assert.ok(labels.includes("懒加载") && labels.includes("跳过"), "插件工具那行也要有加载方式选择器");
+});
+
+test("插件工具选「跳过」也走 op=mode（id 用 group: 前缀）", async () => {
+  const { mod, net } = loadBundle(sectionQueue(INVENTORY_WITH_GROUP));
+  const calls = [];
+  net.fetch = async (url, options) => {
+    calls.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ ok: true, inventory: INVENTORY_WITH_GROUP }) };
+  };
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  // 第一行是插件工具（memstudio，当前是懒加载），它的「跳过」单选是整棵树里第一个
+  const skipRadios = tree.filter((node) => node.props && node.props["data-mode"] === "skip");
+  assert.ok(skipRadios.length > 0, "应有「跳过」单选");
+  skipRadios[0].props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(calls[0], { op: "mode", id: "group:memstudio", mode: "skip" });
 });

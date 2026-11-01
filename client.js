@@ -279,9 +279,10 @@ window.__ModuleLoader__.load({
      * 关掉的条目会从系统提示的目录里消失，也不再允许 load。
      */
     function InventoryCard({ inventory, busy, onToggle, onMode }) {
+      const groups = inventory?.groups ?? [];
       const skills = inventory?.skills ?? [];
       const mcp = inventory?.mcp ?? [];
-      const counts = inventory?.counts ?? { skills: 0, mcp: 0, skillsOn: 0, mcpOn: 0 };
+      const counts = inventory?.counts ?? { groups: 0, skills: 0, mcp: 0, groupsOn: 0, skillsOn: 0, mcpOn: 0 };
 
       const group = (title, hint, rows, kind) =>
         h(
@@ -327,7 +328,9 @@ window.__ModuleLoader__.load({
                     ),
                     kind === "mcp"
                       ? h("span", { style: styles.hint }, `${row.toolCount || 0} 个工具 · ${row.transport || "stdio"}`)
-                      : h("span", { style: styles.hint }, row.source || ""),
+                      : kind === "plugin"
+                        ? h("span", { style: styles.hint }, `托管 ${row.toolCount || 0} 个工具`)
+                        : h("span", { style: styles.hint }, row.source || ""),
                     h(ModeSelector, {
                       mode: row.enabled ? "lazy" : "skip",
                       disabled: busy !== "",
@@ -344,18 +347,24 @@ window.__ModuleLoader__.load({
         h(
           "div",
           { style: { display: "flex", alignItems: "center", gap: 10 } },
-          h("h3", { style: styles.title }, "skill 与 MCP 开关"),
+          h("h3", { style: styles.title }, "插件工具 / skill / MCP 开关"),
           h(
             "span",
-            { style: { ...styles.pillBase, color: counts.skillsOn + counts.mcpOn > 0 ? COLORS.ok : COLORS.off } },
-            `开着 ${counts.skillsOn} skill / ${counts.mcpOn} MCP`,
+            {
+              style: {
+                ...styles.pillBase,
+                color: counts.groupsOn + counts.skillsOn + counts.mcpOn > 0 ? COLORS.ok : COLORS.off,
+              },
+            },
+            `开着 ${counts.groupsOn ?? 0} 组插件工具 / ${counts.skillsOn} skill / ${counts.mcpOn} MCP`,
           ),
         ),
         h(
           "p",
           { style: styles.desc },
-          "每条右边可以选加载方式：懒加载（进目录，需要时才按需注入，只给大纲）或 跳过（不做懒加载：不进目录、不许注入，文件与配置都还在）。破甲类插件自带的 skill / MCP 会自动落在「跳过」。",
+          "分三类：插件工具（别的插件把工具交出来托管，默认一个都不常驻）、skills、mcp。每条右边可以选加载方式：懒加载（进目录，需要时才按需注入，skill 只给大纲）或 跳过（不做懒加载：不进目录、不许注入，文件与配置都还在）。破甲类插件自带的 skill / MCP 会自动落在「跳过」。",
         ),
+        group("插件工具", `${counts.groups ?? 0} 组`, groups, "plugin"),
         group("skills", `${counts.skills} 个`, skills, "skill"),
         group("mcp", `${counts.mcp} 个`, mcp, "mcp"),
       );

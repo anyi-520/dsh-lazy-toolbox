@@ -19,6 +19,7 @@ import { Store, defaultDataDir } from "../lib/store.js";
 import { McpManager } from "../lib/mcp.js";
 import { PluginLog } from "../lib/log.js";
 import { UpdateManager } from "../lib/update.js";
+import { listToolGroups } from "../lib/tool-groups.js";
 import {
   migrateMcpFromProfiles,
   migrateSkillsFromRoots,
@@ -198,6 +199,11 @@ function cmdList(store) {
   for (const server of store.listServers()) {
     const off = store.isDisabled("mcp", server.name) ? "\t[off]" : "";
     print(`mcp:${server.name}\t${oneLine(server.summary, 120)}${off}`);
+  }
+  // 第三类：别的插件交出来托管的工具组（进程内注册表，只有插件跑着时才看得见）
+  for (const group of listToolGroups()) {
+    const off = store.isDisabled("group", group.id) ? "\t[off]" : "";
+    print(`group:${group.id}\t${oneLine(group.summary, 120)}\t${group.toolCount} 个工具${off}`);
   }
 }
 

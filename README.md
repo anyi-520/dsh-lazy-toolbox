@@ -135,6 +135,30 @@ mcp:
 > [`dsh-toolchain`](../dsh-toolchain/README.md)**：那边有独立的 `toolchain` 工具与
 > `设置 → 工具链` 页面。本插件的 `toolbox` 不再提供 `requirements` / `install`。
 
+### 插件工具：把别的插件的工具也变懒
+
+有的插件一次注册十几个工具（比如内存工作台的 17 个 `mem_*`），聊什么都没它们的份，却一直占着
+工具定义。现在它们可以把工具**交给懒工具箱托管**：
+
+```
+## 插件工具（别的插件交出来托管的）
+- group:memstudio — 内存工作台：附加进程 / 读写搜索 / 断点 / 指针链 / 冻结〔插件 dsh-memstudio〕，17 个工具：mem_targets, mem_apps, …
+```
+
+启动时它**一个工具都不注册**；要用时 `toolbox { action: "load", ids: ["group:memstudio"] }`
+（或只挑一个 `group:memstudio:mem_read`），用完 `unload`。设置页里「插件工具」单独一栏，
+同样可选 **懒加载 / 跳过**。
+
+插件侧接入就两行（全局符号桥，不挑安装路径）：
+
+```js
+const bridge = globalThis[Symbol.for("dsh-lazy-toolbox.bridge")]
+if (bridge) bridge.provideToolGroup({ id: "memstudio", summary: "一句话用途", tools })
+else for (const t of tools) ctx.tools.register(t)   // 没装懒工具箱就照旧常驻
+```
+
+细节见 [docs/plugin-tools.md](docs/plugin-tools.md)。
+
 ### 云更新：查新版本 → 看更新内容 → 下载 → 安装 → 提示重启
 
 设置页第一张卡片是「云更新」，它问的是本仓库的 GitHub Release：
@@ -154,7 +178,7 @@ mcp:
 三条路径都行：设置页按钮、命令行 `dsh-lazy-toolbox update check|download|install`、
 AI 侧 `toolbox { action: "update", step: "check" }`。细节见 [docs/update.md](docs/update.md)。
 
-### 设置 → 懒工具箱：skill 与 MCP 的开关
+### 设置 → 懒工具箱：插件工具 / skill / MCP 三类开关
 
 设置页第一屏就是全部 skill 与全部 MCP（**分两组**），每条一行：名字、一句话用途、
 工具数 / 来源，右边一个开关。关掉之后：
@@ -374,6 +398,7 @@ lib/
   outline.js     skill 大纲：骨架 + 每节一句话 + 按需取节
   denylist.js    「不做懒加载」名单（破甲类插件）
   update.js      云更新：检查 / 下载 / 覆盖安装（先备份，装完提示重启）
+  tool-groups.js 插件工具托管：别的插件把工具交出来，目录里只留一行 + 全局符号桥
   log.js         本地运行日志（JSONL，按天分卷 + 保留期清理）
   util.js        文件、路径、frontmatter 工具
 bin/cli.mjs      命令行

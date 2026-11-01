@@ -2,6 +2,31 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.7.0] - 未发布
+
+**新增第三类「插件工具」：别的插件可以把工具交出来托管，默认一个都不常驻。**
+
+### 新增
+
+- `lib/tool-groups.js`：`provideToolGroup({ id, summary, plugin, tools })` 托管接口 +
+  `listToolGroups` / `getToolGroup` / `pickGroupTools` / `removeToolGroup` / `onToolGroupsChange`；
+  自动补 `output`（`{text}` + render），同名组重提供即覆盖，空组直接报错。
+- **全局符号桥** `globalThis[Symbol.for("dsh-lazy-toolbox.bridge")]`：插件与懒工具箱装在不同目录、
+  bare import 解析不到时也能接上；`Symbol.for` 走全局符号表，同进程不同模块副本共用一把钥匙。
+  桥不在时插件照旧自己注册，不会把工具弄丢。包也导出了 `dsh-lazy-toolbox/tool-groups` 子路径。
+- 目录（系统提示）第三类：`### 插件工具（别的插件交出来托管的）`，每行
+  `group:<组> — 一句话用途〔插件 x〕，N 个工具：a, b, c…`，不给 schema；`[已加载]` 标记照旧。
+- `toolbox`：`load` / `list` / `mode` 支持 `group:<组>` 与 `group:<组>:<工具>`；`list` 无 ids 时按
+  插件工具 / skills / mcp 三栏列出，带 ids 可展开某组的工具名与一句话说明。
+- 设置页第三栏「插件工具」：显示托管工具数、来源插件，右边同样是 **懒加载 / 跳过**；
+  跳过 = 不进目录、`load` 拒绝（插件本身照常工作）。`store.disabled` 增加 `groups`。
+- CLI：`list` 带 `group:` 行（工具数 + 开关状态）。
+- 文档 [docs/plugin-tools.md](docs/plugin-tools.md)；README 中英同步。
+- 已接入：`dsh-memstudio` 的 17 个 `mem_*` 工具改为托管（`group:memstudio`）——
+  `D:\逆向\plugins\dsh-memstudio\index.js` 里原本常驻注册的循环改成走桥，桥不在则回落。
+- 测试：新增 `test/tool-groups.test.mjs`（11 项：托管/挑工具/桥/通知/解析/注入/卸载/跳过/清单）
+  与 2 项设置页用例，全量 **91 项** 通过。
+
 ## [0.6.0] - 2026-11-01
 
 **云更新：自动查仓库新版本 → 显示更新内容 → 下载 → 覆盖安装 → 提示重启。**

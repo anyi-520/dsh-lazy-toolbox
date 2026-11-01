@@ -126,6 +126,23 @@ config:
   logRetentionDays: 14            # 0 disables pruning
 ```
 
+## Plugin tools — make other plugins' tools lazy too
+
+Some plugins register a dozen-plus tools up front (memory workbench ships 17 `mem_*`) no matter what
+the conversation is about. They can now **hand those tools to the toolbox**:
+
+```js
+const bridge = globalThis[Symbol.for("dsh-lazy-toolbox.bridge")]
+if (bridge) bridge.provideToolGroup({ id: "memstudio", summary: "one-line purpose", tools })
+else for (const t of tools) ctx.tools.register(t)   // no toolbox installed → register as before
+```
+
+They register **zero** tools at startup; the system prompt gains one line
+(`group:memstudio — … 17 tools: mem_targets, mem_apps, …`), and
+`toolbox { action: "load", ids: ["group:memstudio"] }` brings the definitions in on demand.
+Settings gets a third section (plugin tools) with the same lazy / skip choice.
+See [docs/plugin-tools.md](docs/plugin-tools.md) (Chinese).
+
 ## Cloud update
 
 The first card in Settings is **Cloud update**. It asks this repository's GitHub Release:
