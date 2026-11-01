@@ -20,6 +20,7 @@ import { McpManager } from "../lib/mcp.js";
 import { PluginLog } from "../lib/log.js";
 import { UpdateManager } from "../lib/update.js";
 import { formatValidation, patchCode, readCode, revertCode, validateCode, writeCode } from "../lib/editor.js";
+import { importPluginFromPath, previewPluginZip } from "../lib/importer.js";
 import { listToolGroups } from "../lib/tool-groups.js";
 import {
   migrateMcpFromProfiles,
@@ -156,6 +157,45 @@ function cmdSkill(store, positional, flags) {
  * code read|validate|write|revert <路径> [--content-file f] [--force]
  * 和 toolbox 的 action=code 同一套实现：写之前先校验，不通过不落盘。
  */
+/**
+ * 直接装一个插件 zip：不先解压也能装。
+ * `dsh-lazy-toolbox import 插件.zip [--dry-run] [--profile <dir>] [--no-overwrite]`
+ */
+async function cmdImportZip(store, positional, flags) {
+  const zipPath = positional[0];
+  if (!zipPath) throw new Error("用法：import <插件.zip> [--dry-run] [--profile <dir>]");
+  const profiles = profilesFromFlags(flags);
+  if (flags["dry-run"] === true) {
+    const preview = previewPluginZip(fs.readFileSync(zipPath));
+    print(`看一眼：${zipPath}`);
+    print(`  条目 ${preview.entries} 个（文件 ${preview.files} 个，压缩后 ${Math.round(preview.bytes / 1024)} KB）`);
+    print(`  清单：${preview.manifestPath}`);
+    print("（--dry-run 只看不解压、不落地、不接线）");
+    return;
+  }
+  const result = importPluginFromPath({
+    zipPath,
+    profiles,
+    installRoot: path.join(store.root, "plugins"),
+    overwrite: flags.overwrite !== false && flags["no-overwrite"] !== true,
+  });
+  print(`已装：${result.name}@${result.version}`);
+  print(`  目录：${result.dir}`);
+  print(`  文件：${result.files} 个 / ${Math.round(result.bytes / 1024)} KB（zip ${Math.round(result.zipBytes / 1024)} KB）`);
+  print(`  组合包：${result.hasBundle ? "有（dsh.bundle.patch）" : "没有"}`);
+  if (result.profiles.length === 0) {
+    print("  没有可接线的 profile（用 --profile <dir> 指定，或先 wire-profile）");
+  }
+  for (const item of result.profiles) {
+    print(
+      `  profile ${item.profileDir}：依赖${item.dependency?.wrote ? "已写" : "未变"} / ` +
+        `链接${item.link?.ok ? (item.link.wrote ? "已建" : "已有") : `失败（${item.link?.reason}）`} / ` +
+        `patch${item.patch?.wrote ? "已加" : item.patch?.skipped ? `跳过（${item.patch.skipped}）` : "未变"}`,
+    );
+  }
+  print(result.hint);
+}
+
 async function cmdCode(store, positional, flags) {
   const step = String(positional[0] ?? "read").toLowerCase();
   const file = positional[1];
@@ -488,11 +528,14 @@ async function main() {  const { command, positional, flags } = parseArgs(proces
       return cmdSkill(store, positional, flags);
     case "code":
       return cmdCode(store, positional, flags);
+    case "import":
+    case "install-zip":
+      return cmdImportZip(store, positional, flags);
     case "update":
       return cmdUpdate(store, positional);
     default:
       print(`未知命令：${command}`);
-      print("可用：status | list | migrate [--dry-run] | restore [--skills-only|--mcp-only] | add-skill <path> | add-mcp <name> | remove <id> | enable <id> | disable <id> | mode <id> <lazy|skip> | skill <名字> [--section id] | discover [--dry-run] | update [check|download|install] | code <read|validate|write|revert> <路径> [--content-file f] [--force] | logs [--lines N] [--path] | wire-profile | unwire-profile | doctor");
+      print("可用：status | list | migrate [--dry-run] | restore [--skills-only|--mcp-only] | add-skill <path> | add-mcp <name> | remove <id> | enable <id> | disable <id> | mode <id> <lazy|skip> | skill <名字> [--section id] | discover [--dry-run] | update [check|download|install] | code <read|validate|write|revert> <路径> [--content-file f] [--force] | import <插件.zip> [--dry-run] | logs [--lines N] [--path] | wire-profile | unwire-profile | doctor");
       process.exitCode = 1;
   }
 }

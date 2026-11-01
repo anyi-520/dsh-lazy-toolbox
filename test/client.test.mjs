@@ -13,7 +13,7 @@ const source = fs.readFileSync(bundlePath, "utf8");
  * 用假的 __ModuleLoader__ / react 把浏览器半的 bundle 跑起来。
  * 返回 { exports }：apply() 登记到设置页的那一项由各测试自己收集。
  */
-function loadBundle(hookQueue = []) {
+function loadBundle(hookQueue = [], globals = {}) {
   let loaded;
   // fetch 由测试替换：sandbox 里的 fetch 只做转调，避免跨 realm 的 globalThis 干扰
   const net = { fetch: async () => ({ ok: true, json: async () => ({}) }) };
@@ -29,8 +29,16 @@ function loadBundle(hookQueue = []) {
     setTimeout,
     clearTimeout,
     fetch: (...args) => net.fetch(...args),
-    navigator: { clipboard: { writeText() {} } },
+    navigator: { clipboard: { writeText: (...args) => net.clipboard?.(...args) } },
+    // 假 FileReader：直接把 file.__base64 当结果
+    FileReader: class {
+      readAsDataURL(file) {
+        this.result = `data:application/zip;base64,${file?.__base64 ?? ""}`;
+        setTimeout(() => this.onload?.(), 0);
+      }
+    },
   };
+  Object.assign(sandbox, globals);
   vm.createContext(sandbox);
   vm.runInContext(source, sandbox, { filename: "client.js" });
   assert.ok(loaded, "bundle 应该调用 window.__ModuleLoader__.load");
@@ -89,9 +97,9 @@ function findBy(tree, predicate) {
   return tree.filter((node) => typeof node === "object" && node !== null && predicate(node.props ?? {}, node));
 }
 
-/** LazyToolboxSection 的 hook 顺序：inventory / error / busy / update / tab / promptHidden / 编辑器三件套 */
-function sectionQueue(inventory = null, update = null, tab = "lazy") {
-  return [inventory, "", "", update, tab, false, "", "", null, ""];
+/** LazyToolboxSection 的 hook 顺序：inventory / error / busy / update / about / zip / tab / promptHidden / 编辑器四件套 */
+function sectionQueue(inventory = null, update = null, tab = "lazy", about = null, zip = null) {
+  return [inventory, "", "", update, about, zip, tab, false, "", "", null, ""];
 }
 
 const UPDATE = {
@@ -260,8 +268,8 @@ test("已跳过的条目点「懒加载」会 POST mode=lazy", async () => {
 });
 
 
-test("云更新卡片：显示当前/最新、更新内容与三步按钮", () => {
-  const { mod } = loadBundle(sectionQueue(INVENTORY, UPDATE, "about"));
+test("云更新卡片：显示当前/最新、更新内容与三步按钮（在「工具」标签里）", () => {
+  const { mod } = loadBundle(sectionQueue(INVENTORY, UPDATE, "tool"));
   const { component } = registerComponent(mod);
   const tree = render(component({}));
   const text = textOf(tree);
@@ -277,7 +285,7 @@ test("云更新卡片：显示当前/最新、更新内容与三步按钮", () =
 });
 
 test("点「检查更新」POST op=update.check；点「下载」POST op=update.download", async () => {
-  const { mod, net } = loadBundle(sectionQueue(INVENTORY, UPDATE, "about"));
+  const { mod, net } = loadBundle(sectionQueue(INVENTORY, UPDATE, "tool"));
   const calls = [];
   net.fetch = async (url, options) => {
     calls.push(JSON.parse(options.body));
@@ -298,7 +306,7 @@ test("点「检查更新」POST op=update.check；点「下载」POST op=update.
 
 test("下载好了才出现安装按钮；装完显示重启提示", () => {
   const downloaded = { ...UPDATE, download: { version: "0.6.0", extracted: true, packageDir: "D:/updates/0.6.0" } };
-  const { mod } = loadBundle(sectionQueue(INVENTORY, downloaded, "about"));
+  const { mod } = loadBundle(sectionQueue(INVENTORY, downloaded, "tool"));
   const { component } = registerComponent(mod);
   const tree = render(component({}));
   const labels = buttonsOf(tree).map((button) => button.label);
@@ -310,7 +318,7 @@ test("下载好了才出现安装按钮；装完显示重启提示", () => {
     download: null,
     installed: { version: "0.6.0", files: 9, backupDir: "D:/updates/backup-0.5.3", restartRequired: true },
   };
-  const second = loadBundle(sectionQueue(INVENTORY, installed, "about"));
+  const second = loadBundle(sectionQueue(INVENTORY, installed, "tool"));
   const component2 = registerComponent(second.mod).component;
   const text = textOf(render(component2({})));
   assert.match(text, /已安装 v0\.6\.0/);
@@ -417,14 +425,218 @@ test("顶部有「懒加载 / 工具 / 关于」三个标签，默认落在懒�
   assert.doesNotMatch(textOf(tree), /云更新/);
 });
 
-test("「关于」标签里放版本、仓库与云更新卡片", () => {
-  const { mod } = loadBundle(sectionQueue(INVENTORY_WITH_GROUP, UPDATE, "about"));
+test("「关于」标签：介绍软件 + 感谢名单 + 制作名单，不再放更新卡片", () => {
+  const ABOUT = {
+    intro: "懒工具箱管的是「上下文预算」。",
+    repo: "https://github.com/anyi-520/dsh-lazy-toolbox",
+    thanks: [],
+    thanksEmpty: "还空着——留给你。",
+    authors: [
+      { id: "anyi", name: "安逸", badge: "作者", role: "需求、拍板、测试", avatar: "/dsh-lazy-toolbox/avatar/anyi.jpg", link: "https://github.com/anyi-520", linkText: "github.com/anyi-520" },
+      { id: "xiaomajiang", name: "小码酱", badge: "实现", role: "写代码的那个 AI", avatar: "data:image/svg+xml;utf8,%3Csvg%3E" },
+    ],
+  };
+  const { mod } = loadBundle(sectionQueue(INVENTORY_WITH_GROUP, UPDATE, "about", ABOUT));
   const { component } = registerComponent(mod);
-  const text = textOf(render(component({})));
+  const tree = render(component({}));
+  const text = textOf(tree);
   assert.match(text, /关于懒工具箱/);
+  assert.match(text, /上下文预算/);
+  assert.match(text, /感谢名单/);
+  assert.match(text, /还空着/);
+  assert.match(text, /制作名单/);
+  assert.match(text, /安逸/);
+  assert.match(text, /小码酱/);
   assert.match(text, /github\.com\/anyi-520\/dsh-lazy-toolbox/);
-  assert.match(text, /云更新/);
   assert.match(text, /当前托管：1 组插件工具 \/ 2 skill \/ 1 MCP/);
+  // 更新相关内容整体搬走了（名片右上角的「检查更新」是全局的，仍在）
+  assert.doesNotMatch(text, /云更新/);
+  assert.doesNotMatch(text, /下载 v0\.6\.0|安装 v0\.6\.0/);
+  assert.doesNotMatch(text, /当前 v0\.5\.3/);
+  const avatarSrcs = findBy(tree, (props) => typeof props.src === "string").map((node) => node.props.src);
+  assert.ok(avatarSrcs.includes("/dsh-lazy-toolbox/avatar/anyi.jpg"), "安逸的头像走插件端点：" + avatarSrcs.join("|"));
+  assert.ok(avatarSrcs.some((src) => src.startsWith("data:image/svg+xml")), "小码酱用内联 SVG 头像");
+  const labels = buttonsOf(tree).map((button) => button.label);
+  for (const gone of ["下载 v0.6.0", "安装 v0.6.0", "保存", "回滚"]) {
+    assert.ok(!labels.includes(gone), `关于页不该有「${gone}」：${labels.join("|")}`);
+  }
+});
+
+test("宿主没给 about（老版本服务端）时，制作名单照样有人，不是「暂无」", () => {
+  const { mod } = loadBundle(sectionQueue(INVENTORY_WITH_GROUP, null, "about"));
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const text = textOf(tree);
+  assert.match(text, /关于懒工具箱/);
+  assert.match(text, /上下文预算/);
+  assert.match(text, /感谢名单/);
+  assert.match(text, /制作名单/);
+  assert.match(text, /安逸/);
+  assert.match(text, /小码酱/);
+  assert.doesNotMatch(text, /暂无/);
+  const avatarSrcs = findBy(tree, (props) => typeof props.src === "string").map((node) => node.props.src);
+  assert.ok(
+    avatarSrcs.some((src) => src.startsWith("data:image/jpeg;base64,")),
+    "没有头像端点时要回落到内联照片：" + avatarSrcs.map((src) => src.slice(0, 32)).join("|"),
+  );
+  assert.ok(avatarSrcs.some((src) => src.startsWith("data:image/svg+xml")), "小码酱用内联 SVG");
+});
+
+test("「工具」标签里有 zip 导入卡片：拖放区 + 选择 zip", () => {
+  const { mod } = loadBundle(sectionQueue(INVENTORY_WITH_GROUP, null, "tool"));
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const text = textOf(tree);
+  assert.match(text, /导入插件 zip/);
+  assert.match(text, /\.zip 免解压/);
+  assert.match(text, /拖 \.zip 到这里/);
+  assert.match(text, /zip-slip/);
+  const drop = tree.find((node) => node.props && node.props["data-role"] === "zip-drop");
+  assert.ok(drop, "应有拖放区");
+  assert.equal(typeof drop.props.onDrop, "function");
+  assert.equal(typeof drop.props.onDragOver, "function");
+  const pick = tree.find((node) => node.props && node.props["data-role"] === "zip-pick");
+  assert.ok(pick, "应有「选择 zip」的按钮");
+  const input = tree.find((node) => node.props && node.props["data-role"] === "zip-input");
+  assert.equal(input?.props?.type, "file");
+  assert.match(String(input?.props?.accept), /\.zip/);
+});
+
+test("把 zip 拖进设置页 → POST op=plugin.import，内容带 base64", async () => {
+  const { mod, net } = loadBundle(sectionQueue(INVENTORY_WITH_GROUP, null, "tool"));
+  const calls = [];
+  net.fetch = async (url, options) => {
+    calls.push(JSON.parse(options.body));
+    return {
+      ok: true,
+      json: async () => ({
+        ok: true,
+        imported: {
+          name: "dsh-demo-plugin",
+          version: "1.2.3",
+          dir: "D:/data/plugins/dsh-demo-plugin-1.2.3",
+          files: 4,
+          bytes: 2048,
+          hasBundle: true,
+          profiles: [{ profileDir: "D:/profile", dependency: { wrote: true }, link: { ok: true, wrote: true }, patch: { wrote: true } }],
+          hint: "重启 DSH 生效。",
+        },
+        inventory: INVENTORY_WITH_GROUP,
+      }),
+    };
+  };
+  const { component } = registerComponent(mod);
+  let tree = render(component({}));
+
+  const drop = tree.find((node) => node.props && node.props["data-role"] === "zip-drop");
+  const file = { name: "dsh-demo-plugin-1.2.3.zip", __base64: "UEsDBAoAAAAAAA==" };
+  const event = { preventDefault() {}, dataTransfer: { files: [file], types: ["Files"] } };
+  drop.props.onDrop(event);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  assert.equal(calls[0].op, "plugin.import");
+  assert.equal(calls[0].zip, "UEsDBAoAAAAAAA==", "要把 base64 正文传上去（不带 data: 前缀）");
+  assert.equal(calls[0].filename, "dsh-demo-plugin-1.2.3.zip");
+});
+
+test("拖进来的不是 zip 就不发请求，直接说清楚", async () => {
+  const { mod, net } = loadBundle(sectionQueue(INVENTORY_WITH_GROUP, null, "tool"));
+  const calls = [];
+  net.fetch = async (url, options) => {
+    calls.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ ok: true }) };
+  };
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const section = tree[0];
+  section.props.onDrop({ preventDefault() {}, dataTransfer: { files: [{ name: "照片.png" }] } });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(calls.length, 0, "非 zip 不该发请求");
+});
+
+test("装完把结果摊开：版本、目录、profile 接线与重启提示", () => {
+  const imported = {
+    name: "dsh-demo-plugin",
+    version: "1.2.3",
+    dir: "D:/data/plugins/dsh-demo-plugin-1.2.3",
+    files: 4,
+    bytes: 2048,
+    hasBundle: true,
+    profiles: [{ profileDir: "D:/profile", dependency: { wrote: true }, link: { ok: true, wrote: true }, patch: { wrote: true } }],
+    hint: "重启 DSH 生效。",
+  };
+  const { mod } = loadBundle(sectionQueue(INVENTORY_WITH_GROUP, null, "tool", null, { result: imported, name: "dsh-demo-plugin-1.2.3.zip" }));
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const text = textOf(tree);
+  assert.match(text, /已装 dsh-demo-plugin@1\.2\.3/);
+  assert.match(text, /D:\/data\/plugins\/dsh-demo-plugin-1\.2\.3/);
+  assert.match(text, /组合包：有/);
+  assert.match(text, /patch已加/);
+  assert.match(text, /重启 DSH 生效/);
+  const labels = buttonsOf(tree).map((button) => button.label);
+  assert.ok(labels.includes("复制安装目录"), "装完给个复制路径的按钮：" + labels.join("|"));
+});
+
+test("装完点「填进官方弹窗」：走原生 value setter 并派发 input 事件", () => {
+  const events = [];
+  const input = {
+    placeholder: "例如 dsh-plugin-whale-pet",
+    value: "",
+    type: "text",
+    offsetParent: {},
+    focus() {},
+    dispatchEvent(event) {
+      events.push(event.type);
+    },
+  };
+  // 原生 setter 打上 native: 前缀，证明走的是 setter 而不是裸赋值
+  function HTMLInputElement() {}
+  Object.defineProperty(HTMLInputElement.prototype, "value", {
+    configurable: true,
+    get() {
+      return input.value;
+    },
+    set(next) {
+      input.value = `native:${next}`;
+    },
+  });
+  const documentStub = {
+    querySelectorAll: (selector) => (selector === "input" ? [input] : []),
+    defaultView: {
+      HTMLInputElement,
+      Event: class {
+        constructor(type) {
+          this.type = type;
+        }
+      },
+    },
+  };
+
+  const zipState = {
+    result: { name: "dsh-demo-plugin", version: "1.2.3", dir: "D:/data/plugins/dsh-demo-1.2.3", profiles: [], files: 3, bytes: 10 },
+  };
+  const { mod } = loadBundle(sectionQueue(INVENTORY_WITH_GROUP, null, "tool", null, zipState), { document: documentStub });
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const fill = buttonsOf(tree).find((button) => button.label === "填进官方弹窗");
+  assert.ok(fill, "装完应给「填进官方弹窗」按钮：" + buttonsOf(tree).map((b) => b.label).join("|"));
+  fill.onClick();
+  assert.equal(input.value, "native:D:/data/plugins/dsh-demo-1.2.3");
+  assert.deepEqual(events, ["input", "change"]);
+});
+
+test("弹窗没开时点「填进官方弹窗」只说没找到，不炸", () => {
+  const documentStub = {
+    querySelectorAll: () => [],
+    defaultView: { HTMLInputElement: function () {}, Event: class {} },
+  };
+  const zipState = { result: { name: "p", version: "1.0.0", dir: "D:/x", profiles: [], files: 1, bytes: 1 } };
+  const { mod } = loadBundle(sectionQueue(INVENTORY_WITH_GROUP, null, "tool", null, zipState), { document: documentStub });
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const fill = buttonsOf(tree).find((button) => button.label === "填进官方弹窗");
+  assert.doesNotThrow(() => fill.onClick());
 });
 
 test("「工具」标签里有代码编辑器与两个动作按钮", () => {
@@ -443,8 +655,8 @@ test("「工具」标签里有代码编辑器与两个动作按钮", () => {
 
 test("编辑器「保存」POST op=code.write，把内容带上", async () => {
   const queue = sectionQueue(INVENTORY_WITH_GROUP, null, "tool");
-  queue[6] = "lib/index.js";
-  queue[7] = "export const a = ;\n";
+  queue[8] = "lib/index.js";
+  queue[9] = "export const a = ;\n";
   const { mod, net } = loadBundle(queue);
   const calls = [];
   net.fetch = async (url, options) => {
@@ -464,8 +676,8 @@ test("编辑器「保存」POST op=code.write，把内容带上", async () => {
 
 test("编辑器「校验」POST op=code.validate", async () => {
   const queue = sectionQueue(INVENTORY_WITH_GROUP, null, "tool");
-  queue[6] = "lib/index.js";
-  queue[7] = "export const a = 1;\n";
+  queue[8] = "lib/index.js";
+  queue[9] = "export const a = 1;\n";
   const { mod, net } = loadBundle(queue);
   const calls = [];
   net.fetch = async (url, options) => {
