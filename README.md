@@ -36,6 +36,13 @@ DSH（DeepSeek Harness）默认会把所有 skill、所有 MCP 服务的**完整
 
 ## 快速开始
 
+### 从图形界面装（最省事）
+
+`插件 → 添加插件`，填本地目录路径（解压出来的 `dsh-lazy-toolbox` 目录）或包名都行。
+包里有 `dsh.bundle` 声明（`cordis.patch.yml`），DSH 会自己写好依赖、`bundles` 和配置行，重启生效。
+
+> 0.7.0 及更早没有这个声明，安装器会报 `这个包没有声明组合包，无法作为插件安装：dsh-lazy-toolbox declares no dsh.bundle`，换 0.7.1+ 即可。
+
 ### 从本地目录接入（开发 / 自用）
 
 ```bash
@@ -129,7 +136,19 @@ mcp:
 | `skill` | 按需取某个 skill 的某一节正文（大纲模式下的「看详情」；`section: "all"` 整篇） |
 | `mode` | 设置某条目加载方式：`mode: "lazy"`（懒加载）或 `"skip"`（跳过懒加载） |
 | `update` | 云更新：`step: "check"` 查新版本、`"download"` 下载解压、`"install"` 覆盖安装（装完需重启） |
+| `code` | 内置代码编辑器：`step: "read"` / `"validate"` / `"write"` / `"patch"` / `"revert"`，写前先校验、不通过不落盘（见 [docs/editor.md](docs/editor.md)） |
 | `discover` | 扫一遍已安装插件自带的 skill / MCP，发现就接管（`dry_run: true` 只看不写） |
+
+### 设置页：懒加载 / 工具 / 关于
+
+`设置 → 懒工具箱` 分三个标签：
+
+- **懒加载**：三类开关（插件工具 / skill / MCP）与每条的加载方式；
+- **工具**：扫描插件内置资产、撤掉本会话注入、**内置代码编辑器**（读写文件不经过终端，
+  写前先做语法校验，错了直接给行号列号）；
+- **关于**：版本、仓库、当前托管数量、云更新。
+
+进 DSH 后会自动查一次新版本（约 4 秒），有新版就弹窗：**本次不提醒** / **今天不提醒** / **更新**。
 
 > 外部工具链（JDK / Ghidra / rea-agents / JADX / IDA）的检测与一键安装已经**拆成独立插件
 > [`dsh-toolchain`](../dsh-toolchain/README.md)**：那边有独立的 `toolchain` 工具与

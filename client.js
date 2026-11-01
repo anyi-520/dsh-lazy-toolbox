@@ -370,11 +370,391 @@ window.__ModuleLoader__.load({
       );
     }
 
+    /** 三个标签：懒加载 / 工具 / 关于。 */
+    const TABS = [
+      { id: "lazy", label: "懒加载" },
+      { id: "tool", label: "工具" },
+      { id: "about", label: "关于" },
+    ];
+
+    function Tabs({ tab, onChange }) {
+      return h(
+        "div",
+        {
+          role: "tablist",
+          style: {
+            display: "inline-flex",
+            gap: 2,
+            padding: 2,
+            borderRadius: 999,
+            background: "var(--dsw-alias-fill-quaternary, rgba(0,0,0,.04))",
+          },
+        },
+        TABS.map((item) =>
+          h(
+            "button",
+            {
+              key: item.id,
+              type: "button",
+              role: "tab",
+              "data-tab": item.id,
+              "aria-selected": tab === item.id ? "true" : "false",
+              onClick: () => onChange(item.id),
+              style: {
+                border: "none",
+                cursor: "pointer",
+                padding: "3px 12px",
+                borderRadius: 999,
+                fontSize: 12,
+                lineHeight: "18px",
+                background: tab === item.id ? "var(--dsw-alias-button-primary-fill, #111)" : "transparent",
+                color: tab === item.id ? "var(--dsw-alias-label-primary-foreground, #fff)" : "var(--dsw-alias-label-secondary, #555)",
+                transition: "background .15s, color .15s",
+              },
+            },
+            item.label,
+          ),
+        ),
+      );
+    }
+
+    /** 有新版本时的提示：`inline` 时是卡片（设置页里），否则是全局弹窗（进 DSH 就弹）。 */
+    function UpdatePrompt({ update, busy, onSnooze, onUpdate, inline }) {
+      if (!update?.prompt?.show) return null;
+      const body = h(
+        "div",
+        {
+          style: inline
+            ? { ...styles.card, gap: 8 }
+            : {
+                ...styles.card,
+                width: "min(420px, 88vw)",
+                boxShadow: "0 18px 48px rgba(0,0,0,.28)",
+                background: "var(--dsw-alias-bg-elevated, #fff)",
+              },
+        },
+        h("h3", { style: styles.title }, "懒工具箱有新版本"),
+        h(
+          "p",
+          { style: styles.desc },
+          `现在 ${update.current ?? "?"} → 最新 ${update.latest ?? "?"}。更新只覆盖插件自己的文件，装完重启 DSH 生效。`,
+        ),
+        h(
+          "div",
+          { style: { display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4, flexWrap: "wrap" } },
+          h(Btn, { label: "本次不提醒", onClick: () => onSnooze("session"), disabled: Boolean(busy) }),
+          h(Btn, { label: "今天不提醒", onClick: () => onSnooze("today"), disabled: Boolean(busy) }),
+          h(Btn, { label: "更新", primary: true, onClick: onUpdate, disabled: Boolean(busy) }),
+        ),
+      );
+      if (inline) return body;
+      return h(
+        "div",
+        {
+          style: {
+            position: "fixed",
+            inset: 0,
+            zIndex: 60,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,.32)",
+          },
+        },
+        body,
+      );
+    }
+
+    /**
+     * 全局弹窗（挂 `shell.overlay`）：进 DSH 就自己拉一次状态，有新版本就弹。
+     * 设置页里那份是内联卡片，两者共用 UpdatePrompt，静默状态在后端同一个人手里。
+     */
+    function UpdateDialog() {
+      const [update, setUpdate] = useState(null);
+      const [busy, setBusy] = useState("");
+      const [hidden, setHidden] = useState(false);
+
+      useEffect(() => {
+        let alive = true;
+        const pull = async () => {
+          try {
+            const data = await callApi();
+            if (alive && data?.update) setUpdate(data.update);
+          } catch {
+            /* 拉不到就下次再说 */
+          }
+        };
+        pull();
+        // 宿主启动后约 4 秒才去查新版本，这里再补两次，保证「进 DSH 就能看到」
+        const first = setTimeout(pull, 6000);
+        const second = setTimeout(pull, 20000);
+        return () => {
+          alive = false;
+          clearTimeout(first);
+          clearTimeout(second);
+        };
+      }, []);
+
+      const act = async (op, body) => {
+        setBusy(op);
+        try {
+          const data = await callApi({ op, ...(body ?? {}) });
+          if (data?.update) setUpdate(data.update);
+          setHidden(true);
+        } catch {
+          /* 失败不打扰用户，设置页里能看到错误 */
+        } finally {
+          setBusy("");
+        }
+      };
+
+      if (hidden) return null;
+      return h(UpdatePrompt, {
+        update,
+        busy,
+        inline: false,
+        onSnooze: (scope) => act("update.snooze", { scope }),
+        onUpdate: () => act("update.download"),
+      });
+    }
+
+    /** 「工具」标签：扫描资产 / 撤掉注入 / 内置代码编辑器。 */
+    function ToolsPanel({ busy, onDiscover, onUnloadAll, editor }) {
+      const editorStyle = {
+        width: "100%",
+        minHeight: 180,
+        resize: "vertical",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+        fontSize: 12,
+        lineHeight: "18px",
+        padding: 10,
+        borderRadius: 10,
+        border: "0.5px solid var(--dsw-alias-border, rgba(0,0,0,.14))",
+        background: "var(--dsw-alias-fill-quaternary, rgba(0,0,0,.02))",
+        color: "var(--dsw-alias-label-primary, #111)",
+        boxSizing: "border-box",
+      };
+      const inputStyle = { ...editorStyle, minHeight: 0, height: 30, padding: "4px 10px" };
+      const validation = editor.result;
+      return h(
+        "div",
+        { style: styles.card },
+        h("h3", { style: styles.title }, "工具"),
+        h(
+          "p",
+          { style: styles.desc },
+          "代码编辑器：读写文件不经过终端，写之前先做语法校验（JS 走真解析器、JSON 走 JSON.parse、YAML 浅校验），不通过就不落盘，并直接给出第几行第几列。",
+        ),
+        h(
+          "div",
+          { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+          h(Btn, { label: busy === "discover" ? "扫描中…" : "扫描插件内置资产", onClick: onDiscover, disabled: Boolean(busy) }),
+          h(Btn, { label: busy === "unloadAll" ? "撤销中…" : "撤掉本会话注入", onClick: onUnloadAll, disabled: Boolean(busy), tone: "danger" }),
+        ),
+        h(
+          "div",
+          { style: { display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap", alignItems: "center" } },
+          h("input", {
+            type: "text",
+            placeholder: "文件路径（相对当前工作目录，例如 lib/index.js）",
+            value: editor.file,
+            "data-role": "editor-path",
+            onInput: (event) => editor.onPath(event.target.value),
+            style: { ...inputStyle, flex: "1 1 220px" },
+          }),
+          h(Btn, { label: "读取", onClick: editor.onRead, disabled: Boolean(busy) }),
+          h(Btn, { label: "校验", onClick: editor.onValidate, disabled: Boolean(busy) }),
+          h(Btn, { label: "保存", primary: true, onClick: editor.onSave, disabled: Boolean(busy) }),
+          h(Btn, { label: "回滚", onClick: editor.onRevert, disabled: Boolean(busy), tone: "danger" }),
+        ),
+        h("textarea", {
+          value: editor.content,
+          "data-role": "editor-body",
+          spellCheck: false,
+          onInput: (event) => editor.onContent(event.target.value),
+          style: { ...editorStyle, marginTop: 6 },
+        }),
+        validation
+          ? h(
+              "div",
+              { style: { fontSize: 12, lineHeight: "18px", color: validation.ok ? COLORS.ok : "#b4232b" } },
+              (validation.ok ? "✅ 校验通过" : "❌ 校验没通过") + `（${validation.kind}）`,
+              (validation.errors ?? []).map((item, index) =>
+                h("div", { key: `err-${index}`, style: { color: "#b4232b" } }, `第 ${item.line || "?"} 行${item.column ? ` 第 ${item.column} 列` : ""}：${item.message}`),
+              ),
+              (validation.notes ?? []).map((note, index) => h("div", { key: `note-${index}`, style: styles.hint }, `说明：${note}`)),
+            )
+          : null,
+        editor.note ? h("div", { style: styles.hint }, editor.note) : null,
+      );
+    }
+
+    /** 「关于」标签：版本 / 仓库 / 更新 / 数据目录。 */
+    function AboutCard({ inventory, update, busy, onCheck, onDownload, onInstall }) {
+      const repo = "https://github.com/anyi-520/dsh-lazy-toolbox";
+      return h(
+        "div",
+        { style: styles.card },
+        h(
+          "div",
+          { style: { display: "flex", alignItems: "center", gap: 10 } },
+          h("h3", { style: styles.title }, "关于懒工具箱"),
+          h("span", { style: { ...styles.pillBase, color: COLORS.ok } }, `v${update?.current ?? inventory?.version ?? "?"}`),
+        ),
+        h(
+          "p",
+          { style: styles.desc },
+          "skill / MCP / 插件工具默认不进工具定义，只在系统提示目录里占一行用途；需要时按需注入本会话，用完撤掉。零依赖、文件都在本地。",
+        ),
+        h(
+          "div",
+          { style: { fontSize: 12, lineHeight: "20px", color: "var(--dsw-alias-label-secondary, #555)" } },
+          h("div", {}, `仓库：`, h("a", { href: repo, target: "_blank", rel: "noreferrer", style: { color: "var(--dsw-alias-brand, #2b6cff)" } }, repo)),
+          h("div", {}, `数据目录：${inventory?.dataDir ?? "（见日志）"}`),
+          h("div", {}, `当前托管：${inventory?.counts?.groups ?? 0} 组插件工具 / ${inventory?.counts?.skills ?? 0} skill / ${inventory?.counts?.mcp ?? 0} MCP`),
+        ),
+      );
+    }
+
+    /** 顶部那张「插件名片」：图标块 + 名称 + 状态标签 + 来源信息（照插件管理页的样子）。 */
+    function PluginHeader({ inventory, update, busy, onCheck }) {
+      const version = update?.current ?? inventory?.version ?? "?";
+      const healthy = Boolean(inventory);
+      const pill = (text, tone) =>
+        h(
+          "span",
+          {
+            style: {
+              fontSize: 11,
+              lineHeight: "18px",
+              padding: "1px 8px",
+              borderRadius: 6,
+              border: "0.5px solid currentColor",
+              color: tone === "warn" ? "#b4232b" : tone === "muted" ? "var(--dsw-alias-label-tertiary, #888)" : COLORS.ok,
+              whiteSpace: "nowrap",
+            },
+          },
+          text,
+        );
+      return h(
+        "div",
+        { style: { display: "flex", flexDirection: "column", gap: 12 } },
+        h(
+          "div",
+          { style: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 } },
+          h(
+            "div",
+            {
+              style: {
+                width: 48,
+                height: 48,
+                flex: "0 0 auto",
+                borderRadius: 14,
+                border: "0.5px solid var(--dsw-alias-border, rgba(0,0,0,.12))",
+                background: "var(--dsw-alias-fill-quaternary, rgba(0,0,0,.03))",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              },
+            },
+            h(
+              "div",
+              {
+                style: {
+                  width: 28,
+                  height: 28,
+                  borderRadius: 8,
+                  background: "#111",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 2,
+                },
+              },
+              [10, 7, 4].map((width, index) =>
+                h("span", {
+                  key: `bar-${index}`,
+                  style: { width, height: 2, borderRadius: 1, background: "#fff", opacity: 0.9 - index * 0.28 },
+                }),
+              ),
+            ),
+          ),
+          h(
+            "div",
+            { style: { display: "flex", alignItems: "center", gap: 8 } },
+            h(Btn, { label: busy === "check" ? "检查中…" : "检查更新", onClick: onCheck, disabled: Boolean(busy) }),
+            h(Switch, {
+              checked: healthy,
+              disabled: true,
+              onChange: () => {},
+            }),
+          ),
+        ),
+        h(
+          "div",
+          { style: { display: "flex", flexDirection: "column", gap: 6 } },
+          h(
+            "div",
+            { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+            h("h3", { style: { ...styles.title, fontSize: 18, fontWeight: 600 } }, "懒工具箱"),
+            pill(healthy ? "正常" : "未就绪", healthy ? "ok" : "warn"),
+            pill(`v${version}`, "muted"),
+            update?.hasUpdate ? pill(`可更新 ${update.latest}`, "muted") : null,
+          ),
+          h(
+            "div",
+            { style: styles.desc },
+            "skill / MCP / 插件工具默认不进工具定义，只在系统提示目录里占一行用途；需要时按需注入本会话，用完撤掉。",
+          ),
+        ),
+        h(
+          "div",
+          { style: { display: "flex", flexDirection: "column", gap: 6 } },
+          h("div", { style: { fontSize: 13, fontWeight: 500, color: "var(--dsw-alias-label-primary, #111)" } }, "来源信息"),
+          h(
+            "div",
+            { style: { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, color: "var(--dsw-alias-label-secondary, #555)" } },
+            h("span", { style: { flex: "0 0 auto" } }, "代码来源"),
+            h(
+              "code",
+              {
+                style: {
+                  fontSize: 11,
+                  padding: "0 6px",
+                  borderRadius: 4,
+                  background: "var(--dsw-alias-fill-quaternary, rgba(0,0,0,.05))",
+                  color: "var(--dsw-alias-label-secondary, #555)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  maxWidth: "70%",
+                },
+              },
+              inventory?.installDir ? `link:${inventory.installDir}` : "link:（未读到安装目录）",
+            ),
+          ),
+          h(
+            "div",
+            { style: { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, color: "var(--dsw-alias-label-secondary, #555)" } },
+            h("span", { style: { flex: "0 0 auto" } }, "数据目录"),
+            h("code", { style: { fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "70%" } }, inventory?.dataDir ?? "—"),
+          ),
+        ),
+      );
+    }
+
     function LazyToolboxSection() {
       const [inventory, setInventory] = useState(null);
       const [error, setError] = useState("");
       const [busy, setBusy] = useState("");
       const [update, setUpdate] = useState(null);
+      const [tab, setTab] = useState("lazy");
+      const [promptHidden, setPromptHidden] = useState(false);
+      const [editorFile, setEditorFile] = useState("");
+      const [editorContent, setEditorContent] = useState("");
+      const [editorResult, setEditorResult] = useState(null);
+      const [editorNote, setEditorNote] = useState("");
 
       const ingest = useCallback((data) => {
         if (!data || data.ok === false) {
@@ -396,6 +776,13 @@ window.__ModuleLoader__.load({
 
       useEffect(() => {
         refresh();
+        // 宿主启动后会异步查一次新版本（约 4 秒），再补一次拉取好让弹窗能出来
+        const timer = setTimeout(() => {
+          refresh();
+        }, 6000);
+        return () => {
+          clearTimeout(timer);
+        };
       }, [refresh]);
 
       const setMode = async (id, mode) => {
@@ -422,6 +809,19 @@ window.__ModuleLoader__.load({
         }
       };
 
+      const snooze = async (scope) => {
+        setBusy(`snooze:${scope}`);
+        try {
+          const data = await callApi({ op: "update.snooze", scope });
+          if (data.update) setUpdate(data.update);
+          setPromptHidden(true);
+        } catch (err) {
+          setError(String(err && err.message ? err.message : err));
+        } finally {
+          setBusy("");
+        }
+      };
+
       const toggle = async (id, next) => {
         setBusy(`toggle:${id}`);
         try {
@@ -433,18 +833,98 @@ window.__ModuleLoader__.load({
         }
       };
 
+      const callEditor = async (op, extra) => {
+        setBusy(`code:${op}`);
+        setEditorNote("");
+        try {
+          const data = await callApi({ op, path: editorFile, ...(extra ?? {}) });
+          if (op === "code.read" && data.file) {
+            setEditorContent(data.file.content ?? "");
+            setEditorNote(`已读取 ${data.file.file}（${data.file.lines} 行）`);
+            setEditorResult(null);
+          } else if (op === "code.validate" && data.validation) {
+            setEditorResult(data.validation);
+          } else if (op === "code.write" && data.write) {
+            setEditorResult({ ok: data.write.written, kind: data.write.kind, errors: data.write.errors ?? [], notes: data.write.notes ?? [] });
+            setEditorNote(data.write.message ?? "");
+            if (data.write.written) setEditorContent(data.write.content ?? editorContent);
+          } else if (op === "code.revert" && data.reverted) {
+            setEditorNote(`已回滚到 ${data.reverted.from}`);
+            await callEditor("code.read");
+          }
+        } catch (err) {
+          setError(String(err && err.message ? err.message : err));
+        } finally {
+          setBusy("");
+        }
+      };
+
+      const editor = {
+        file: editorFile,
+        content: editorContent,
+        result: editorResult,
+        note: editorNote,
+        onPath: setEditorFile,
+        onContent: setEditorContent,
+        onRead: () => callEditor("code.read"),
+        onValidate: () => callEditor("code.validate", { content: editorContent }),
+        onSave: () => callEditor("code.write", { content: editorContent }),
+        onRevert: () => callEditor("code.revert"),
+      };
+
+      const showPrompt = Boolean(update?.prompt?.show) && !promptHidden;
+
       return h(
         "section",
         { style: styles.wrap },
-        h(UpdateCard, {
-          update,
-          busy,
-          onCheck: () => runUpdate("update.check", "check"),
-          onDownload: () => runUpdate("update.download", "download"),
-          onInstall: () => runUpdate("update.install", "install"),
-        }),
-        h(InventoryCard, { inventory, busy, onToggle: toggle, onMode: setMode }),
+        h("div", { style: styles.card }, h(PluginHeader, { inventory, update, busy, onCheck: () => runUpdate("update.check", "check") })),
+        h(
+          "div",
+          { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 } },
+          h(Tabs, { tab, onChange: setTab }),
+          h(
+            "span",
+            { style: { fontSize: 11, color: "var(--dsw-alias-label-tertiary, #888)" } },
+            tab === "lazy" ? "默认全部懒加载" : tab === "tool" ? "编辑器与运维动作" : "版本与更新",
+          ),
+        ),
+        tab === "lazy" ? h(InventoryCard, { inventory, busy, onToggle: toggle, onMode: setMode }) : null,
+        tab === "tool"
+          ? h(ToolsPanel, {
+              busy,
+              onDiscover: () => runUpdate("discover", "discover"),
+              onUnloadAll: () => runUpdate("unloadAll", "unloadAll"),
+              editor,
+            })
+          : null,
+        tab === "about"
+          ? h(
+              "div",
+              { style: { display: "flex", flexDirection: "column", gap: 14 } },
+              h(AboutCard, { inventory, update, busy, onCheck: () => runUpdate("update.check", "check") }),
+              h(UpdateCard, {
+                update,
+                busy,
+                onCheck: () => runUpdate("update.check", "check"),
+                onDownload: () => runUpdate("update.download", "download"),
+                onInstall: () => runUpdate("update.install", "install"),
+              }),
+            )
+          : null,
         error ? h("div", { style: { ...styles.hint, color: "#b4232b" } }, error) : null,
+        showPrompt
+          ? h(UpdatePrompt, {
+              update,
+              busy,
+              inline: true,
+              onSnooze: snooze,
+              onUpdate: async () => {
+                setTab("about");
+                setPromptHidden(true);
+                await runUpdate("update.download", "download");
+              },
+            })
+          : null,
       );
     }
 
@@ -460,6 +940,17 @@ window.__ModuleLoader__.load({
             label: () => "懒工具箱",
           },
           LazyToolboxSection,
+        ),
+      );
+      // 全局层：进 DSH 就查一次新版本，有新版直接弹（不依赖用户先打开设置页）
+      ctx.slots.inject("shell.overlay", () =>
+        ctx.slots.register(
+          {
+            name: "shell.overlay",
+            id: "lazy-toolbox-update",
+            inject: () => ({}),
+          },
+          UpdateDialog,
         ),
       );
     }

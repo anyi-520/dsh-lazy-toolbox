@@ -1,0 +1,15 @@
+# dsh-lazy-toolbox 的组合包补丁（bundle patch）。
+#
+# DSH 的「添加插件」装本地目录 / GitHub 仓库时，要求包里声明 `dsh.bundle.patch`，
+# 这一份就是那个 patch：装进 profile 时插一行，插件就挂上了。
+#
+# 和 `dsh-lazy-toolbox wire-profile` 写进 profile 自己 cordis.patch.yml 的那一段是
+# 一模一样的内容——两种装法最终落到同一行，重复不会叠加。
+
+- insert:
+    - id: lazy-toolbox
+      name: dsh-lazy-toolbox
+      inject: [systemPrompt, tools, webServer]
+      config:
+        autoImport: true
+        autoUnloadOnTurnEnd: true

@@ -199,3 +199,48 @@ test("没下载就安装：给出可读错误", async () => {
   await updater.check({ force: true });
   await assert.rejects(() => updater.install(), /先 action=update step=download/);
 });
+
+
+test("静默：本次不提醒跳过本次进程，重启后重新提醒", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lt-snooze-"));
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ tag_name: "v9.9.9", body: "", assets: [] }) });
+  const a = new UpdateManager({ root, config: {}, currentVersion: "0.7.0", log: null, fetchImpl });
+  await a.check({ force: true });
+  assert.equal(a.status().prompt.show, true);
+  a.snooze("session");
+  assert.equal(a.status().prompt.show, false, "本次不提醒之后就别弹了");
+  const b = new UpdateManager({ root, config: {}, currentVersion: "0.7.0", log: null, fetchImpl });
+  assert.equal(b.status().prompt.show, true, "重启（新进程）要重新提醒");
+});
+
+test("静默：今天不提醒跨重启也不再弹，直到第二天", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lt-snooze2-"));
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ tag_name: "v9.9.9", body: "", assets: [] }) });
+  const a = new UpdateManager({ root, config: {}, currentVersion: "0.7.0", log: null, fetchImpl });
+  await a.check({ force: true });
+  a.snooze("today");
+  assert.equal(a.status().snooze.scope, "today");
+  assert.equal(a.status().snooze.until, UpdateManager.today());
+  const b = new UpdateManager({ root, config: {}, currentVersion: "0.7.0", log: null, fetchImpl });
+  assert.equal(b.status().prompt.show, false, "同一天内重启也不再弹");
+});
+
+test("没有新版本时不弹窗", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lt-snooze3-"));
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ tag_name: "v0.7.0", body: "", assets: [] }) });
+  const a = new UpdateManager({ root, config: {}, currentVersion: "0.7.0", log: null, fetchImpl });
+  await a.check({ force: true });
+  assert.equal(a.status().hasUpdate, false);
+  assert.equal(a.status().prompt.show, false);
+});
+
+test("check 之后 snooze 还在（不会被覆盖掉）", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lt-snooze4-"));
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ tag_name: "v9.9.9", body: "", assets: [] }) });
+  const a = new UpdateManager({ root, config: {}, currentVersion: "0.7.0", log: null, fetchImpl });
+  await a.check({ force: true });
+  a.snooze("today");
+  await a.check({ force: true });
+  assert.equal(a.status().snooze.scope, "today");
+  assert.equal(a.status().prompt.show, false);
+});

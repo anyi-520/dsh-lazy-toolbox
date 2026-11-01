@@ -1,20 +1,31 @@
 {
   "name": "dsh-lazy-toolbox",
-  "version": "0.7.0",
-  "description": "DeepSeek Harness 插件：把 skill 与 MCP 从默认工具定义里抽出来，改成按需热加载的懒工具箱（skill / mcp 分开列出，一句话说明用途，用时注入、用完卸载）。外部工具链面板已拆到独立插件 dsh-toolchain。",
+  "version": "0.7.1",
+  "description": "DeepSeek Harness 插件：把 skill 与 MCP 从默认工具定义里抽出来，改成按需热加载的懒工具箱（skill / mcp / 插件工具分开列出，一句话说明用途，用时注入、用完卸载）；带新版本弹窗提醒与内置代码编辑器。外部工具链面板已拆到独立插件 dsh-toolchain。",
   "type": "module",
   "main": "lib/index.js",
+  "icon": "./icon.svg",
   "exports": {
-    ".": "./lib/index.js",
-    "./client": "./client.js",
-    "./package.json": "./package.json",
-    "./tool-groups": "./lib/tool-groups.js",
-    "./lib/tool-groups.js": "./lib/tool-groups.js"
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./client.js"
+    },
+    "./tool-groups": {
+      "default": "./lib/tool-groups.js"
+    },
+    "./lib/tool-groups.js": {
+      "default": "./lib/tool-groups.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
   },
   "bin": {
     "dsh-lazy-toolbox": "bin/cli.mjs"
   },
   "files": [
+    "icon.svg",
     "lib",
     "bin",
     "client.js",
@@ -25,7 +36,8 @@
     "README.en.md",
     "LICENSE",
     "NOTICE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "cordis.patch.yml"
   ],
   "scripts": {
     "test": "node --test --test-force-exit \"test/*.test.mjs\"",
@@ -65,6 +77,9 @@
     "install": {
       "preferred": "npm",
       "npm": "dsh-lazy-toolbox"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     },
     "client": {
       "platform": "web",

@@ -19,6 +19,7 @@ import { Store, defaultDataDir } from "../lib/store.js";
 import { McpManager } from "../lib/mcp.js";
 import { PluginLog } from "../lib/log.js";
 import { UpdateManager } from "../lib/update.js";
+import { formatValidation, patchCode, readCode, revertCode, validateCode, writeCode } from "../lib/editor.js";
 import { listToolGroups } from "../lib/tool-groups.js";
 import {
   migrateMcpFromProfiles,
@@ -149,6 +150,41 @@ function cmdSkill(store, positional, flags) {
   print("");
   print(outcome.text.trimEnd());
   if (outcome.kind === "all") print(`\n（整篇 ${skill.content.length} 字符）`);
+}
+
+/**
+ * code read|validate|write|revert <路径> [--content-file f] [--force]
+ * 和 toolbox 的 action=code 同一套实现：写之前先校验，不通过不落盘。
+ */
+async function cmdCode(store, positional, flags) {
+  const step = String(positional[0] ?? "read").toLowerCase();
+  const file = positional[1];
+  if (!file) throw new Error("用法：code <read|validate|write|revert> <路径>");
+  if (step === "read") {
+    print(readCode({ file }).content);
+    return;
+  }
+  if (step === "validate") {
+    const content = typeof flags.content === "string" ? flags.content : readCode({ file }).content;
+    const result = await validateCode({ file, content });
+    print(formatValidation(result));
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
+  if (step === "write") {
+    const content = typeof flags.content === "string" ? flags.content : fs.readFileSync(String(flags["content-file"]), "utf8");
+    const result = await writeCode({ root: store.root, file, content, force: flags.force === true });
+    print(formatValidation(await validateCode({ file, content })));
+    print(result.written ? `已写入 ${result.file}（${result.size} 字节）` : `没写入：${result.message}`);
+    if (!result.written) process.exitCode = 1;
+    return;
+  }
+  if (step === "revert") {
+    const result = revertCode({ root: store.root, file });
+    print(`已回滚 ${result.file}（来源 ${result.from}）`);
+    return;
+  }
+  throw new Error("code 的 step 只能是 read / validate / write / revert");
 }
 
 /** 云更新：check / download / install。 */
@@ -450,11 +486,13 @@ async function main() {  const { command, positional, flags } = parseArgs(proces
       return cmdMode(store, positional);
     case "skill":
       return cmdSkill(store, positional, flags);
+    case "code":
+      return cmdCode(store, positional, flags);
     case "update":
       return cmdUpdate(store, positional);
     default:
       print(`未知命令：${command}`);
-      print("可用：status | list | migrate [--dry-run] | restore [--skills-only|--mcp-only] | add-skill <path> | add-mcp <name> | remove <id> | enable <id> | disable <id> | mode <id> <lazy|skip> | skill <名字> [--section id] | discover [--dry-run] | update [check|download|install] | logs [--lines N] [--path] | wire-profile | unwire-profile | doctor");
+      print("可用：status | list | migrate [--dry-run] | restore [--skills-only|--mcp-only] | add-skill <path> | add-mcp <name> | remove <id> | enable <id> | disable <id> | mode <id> <lazy|skip> | skill <名字> [--section id] | discover [--dry-run] | update [check|download|install] | code <read|validate|write|revert> <路径> [--content-file f] [--force] | logs [--lines N] [--path] | wire-profile | unwire-profile | doctor");
       process.exitCode = 1;
   }
 }

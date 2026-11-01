@@ -89,9 +89,9 @@ function findBy(tree, predicate) {
   return tree.filter((node) => typeof node === "object" && node !== null && predicate(node.props ?? {}, node));
 }
 
-/** LazyToolboxSection 的 hook 顺序：inventory / error / busy / update */
-function sectionQueue(inventory = null, update = null) {
-  return [inventory, "", "", update];
+/** LazyToolboxSection 的 hook 顺序：inventory / error / busy / update / tab / promptHidden / 编辑器三件套 */
+function sectionQueue(inventory = null, update = null, tab = "lazy") {
+  return [inventory, "", "", update, tab, false, "", "", null, ""];
 }
 
 const UPDATE = {
@@ -118,14 +118,16 @@ const INVENTORY = {
 
 function registerComponent(mod, queue) {
   let component;
+  const slots = {};
   mod.apply({
     slots: {
       inject(name, run) {
-        assert.equal(name, "settings.section");
+        assert.ok(["settings.section", "shell.overlay"].includes(name), "意外的 slot：" + name);
         run();
       },
       register(options, given) {
-        component = given;
+        slots[options.name] = { options, component: given };
+        if (options.name === "settings.section") component = given;
         return () => {};
       },
     },
@@ -142,13 +144,13 @@ test("client bundle 用 ModuleLoader 格式导出，id 与包名一致", () => {
   assert.equal(typeof mod.apply, "function");
 });
 
-test("apply 在设置页登记「懒工具箱」一节（order 60）", () => {
+test("apply 在设置页登记「懒工具箱」一节（order 60），并往全局层挂更新弹窗", () => {
   const { mod } = loadBundle();
   const registrations = [];
   const ctx = {
     slots: {
       inject(name, run) {
-        assert.equal(name, "settings.section");
+        assert.ok(["settings.section", "shell.overlay"].includes(name), "意外的 slot：" + name);
         run();
       },
       register(options, component) {
@@ -158,13 +160,40 @@ test("apply 在设置页登记「懒工具箱」一节（order 60）", () => {
     },
   };
   mod.apply(ctx);
-  assert.equal(registrations.length, 1);
-  const [{ options }] = registrations;
-  assert.equal(options.name, "settings.section");
-  assert.equal(options.id, "lazy-toolbox");
-  assert.equal(options.label(), "懒工具箱");
-  assert.equal(options.order, 60);
-  assert.equal(typeof registrations[0].component, "function");
+  assert.equal(registrations.length, 2, "设置页一节 + 全局更新弹窗");
+  const section = registrations.find((item) => item.options.name === "settings.section");
+  const overlay = registrations.find((item) => item.options.name === "shell.overlay");
+  assert.equal(section.options.id, "lazy-toolbox");
+  assert.equal(section.options.label(), "懒工具箱");
+  assert.equal(section.options.order, 60);
+  assert.equal(typeof section.component, "function");
+  assert.equal(overlay.options.id, "lazy-toolbox-update", "弹窗要挂在 shell.overlay 上，进 DSH 就能弹");
+  assert.equal(typeof overlay.component, "function");
+});
+
+test("全局更新弹窗自己拉状态，prompt.show 时弹三个按钮", async () => {
+  // UpdateDialog 的 hook 顺序：update / busy / hidden（useEffect 在测试里是空实现，
+  // 所以直接把「已经拉到新版本」这份状态喂进队列）
+  const { mod } = loadBundle([{ ...UPDATE, prompt: { show: true } }, "", false]);
+  let dialog;
+  mod.apply({
+    slots: {
+      inject(name, run) {
+        run();
+      },
+      register(options, component) {
+        if (options.name === "shell.overlay") dialog = component;
+        return () => {};
+      },
+    },
+  });
+  assert.equal(typeof dialog, "function");
+  const tree = render(dialog({}));
+  assert.match(textOf(tree), /懒工具箱有新版本/);
+  const labels = buttonsOf(tree).map((button) => button.label);
+  for (const label of ["本次不提醒", "今天不提醒", "更新"]) {
+    assert.ok(labels.includes(label), `弹窗里应有「${label}」，实际：${labels.join("|")}`);
+  }
 });
 
 test("页面把 skill 与 MCP 都列出来，每条带「懒加载 / 跳过」选择器", () => {
@@ -232,7 +261,7 @@ test("已跳过的条目点「懒加载」会 POST mode=lazy", async () => {
 
 
 test("云更新卡片：显示当前/最新、更新内容与三步按钮", () => {
-  const { mod } = loadBundle(sectionQueue(INVENTORY, UPDATE));
+  const { mod } = loadBundle(sectionQueue(INVENTORY, UPDATE, "about"));
   const { component } = registerComponent(mod);
   const tree = render(component({}));
   const text = textOf(tree);
@@ -248,7 +277,7 @@ test("云更新卡片：显示当前/最新、更新内容与三步按钮", () =
 });
 
 test("点「检查更新」POST op=update.check；点「下载」POST op=update.download", async () => {
-  const { mod, net } = loadBundle(sectionQueue(INVENTORY, UPDATE));
+  const { mod, net } = loadBundle(sectionQueue(INVENTORY, UPDATE, "about"));
   const calls = [];
   net.fetch = async (url, options) => {
     calls.push(JSON.parse(options.body));
@@ -269,7 +298,7 @@ test("点「检查更新」POST op=update.check；点「下载」POST op=update.
 
 test("下载好了才出现安装按钮；装完显示重启提示", () => {
   const downloaded = { ...UPDATE, download: { version: "0.6.0", extracted: true, packageDir: "D:/updates/0.6.0" } };
-  const { mod } = loadBundle(sectionQueue(INVENTORY, downloaded));
+  const { mod } = loadBundle(sectionQueue(INVENTORY, downloaded, "about"));
   const { component } = registerComponent(mod);
   const tree = render(component({}));
   const labels = buttonsOf(tree).map((button) => button.label);
@@ -281,7 +310,7 @@ test("下载好了才出现安装按钮；装完显示重启提示", () => {
     download: null,
     installed: { version: "0.6.0", files: 9, backupDir: "D:/updates/backup-0.5.3", restartRequired: true },
   };
-  const second = loadBundle(sectionQueue(INVENTORY, installed));
+  const second = loadBundle(sectionQueue(INVENTORY, installed, "about"));
   const component2 = registerComponent(second.mod).component;
   const text = textOf(render(component2({})));
   assert.match(text, /已安装 v0\.6\.0/);
@@ -336,4 +365,170 @@ test("插件工具选「跳过」也走 op=mode（id 用 group: 前缀）", asyn
   skipRadios[0].props.onClick();
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(calls[0], { op: "mode", id: "group:memstudio", mode: "skip" });
+});
+
+// ── 顶部名片（照插件管理页的样式） ─────────────────────────────────────────
+
+test("顶部名片：名称 + 正常标签 + 版本 + 来源信息 / 数据目录", () => {
+  const { mod } = loadBundle(sectionQueue({ ...INVENTORY_WITH_GROUP, dataDir: "C:/Users/x/.dsh/lazy-toolbox", installDir: "D:/逆向/dsh-lazy-toolbox" }, UPDATE));
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const text = textOf(tree);
+  assert.match(text, /懒工具箱/);
+  assert.match(text, /正常/);
+  assert.match(text, /v0\.5\.3/);
+  assert.match(text, /来源信息/);
+  assert.match(text, /代码来源/);
+  assert.match(text, /link:D:\/逆向\/dsh-lazy-toolbox/);
+  assert.match(text, /数据目录/);
+  assert.match(text, /C:\/Users\/x\/\.dsh\/lazy-toolbox/);
+  const labels = buttonsOf(tree).map((button) => button.label);
+  assert.ok(labels.includes("检查更新"), "名片右上角要有检查更新");
+});
+
+test("没有清单时名片显示「未就绪」而不是空白", () => {
+  const { mod } = loadBundle(sectionQueue(null));
+  const { component } = registerComponent(mod);
+  const text = textOf(render(component({})));
+  assert.match(text, /未就绪/);
+  assert.match(text, /未读到安装目录/);
+});
+
+// ── 三标签 ───────────────────────────────────────────────────────────────
+
+test("顶部有「懒加载 / 工具 / 关于」三个标签，默认落在懒加载", () => {
+  const { mod } = loadBundle(sectionQueue(INVENTORY_WITH_GROUP));
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const tabs = tree.filter((node) => node.props && node.props.role === "tab");
+  assert.equal(tabs.length, 3, "三个标签");
+  assert.deepEqual(
+    tabs.map((node) => node.props["data-tab"]),
+    ["lazy", "tool", "about"],
+  );
+  assert.deepEqual(
+    tabs.map((node) => node.children.join("")),
+    ["懒加载", "工具", "关于"],
+  );
+  assert.equal(tabs.filter((node) => node.props["aria-selected"] === "true").length, 1);
+  assert.equal(tabs.find((node) => node.props["aria-selected"] === "true").props["data-tab"], "lazy");
+  // 懒加载页里有 list，没有更新卡片
+  assert.match(textOf(tree), /插件工具1 组/);
+  assert.doesNotMatch(textOf(tree), /云更新/);
+});
+
+test("「关于」标签里放版本、仓库与云更新卡片", () => {
+  const { mod } = loadBundle(sectionQueue(INVENTORY_WITH_GROUP, UPDATE, "about"));
+  const { component } = registerComponent(mod);
+  const text = textOf(render(component({})));
+  assert.match(text, /关于懒工具箱/);
+  assert.match(text, /github\.com\/anyi-520\/dsh-lazy-toolbox/);
+  assert.match(text, /云更新/);
+  assert.match(text, /当前托管：1 组插件工具 \/ 2 skill \/ 1 MCP/);
+});
+
+test("「工具」标签里有代码编辑器与两个动作按钮", () => {
+  const { mod } = loadBundle(sectionQueue(INVENTORY_WITH_GROUP, null, "tool"));
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const text = textOf(tree);
+  assert.match(text, /代码编辑器/);
+  const labels = buttonsOf(tree).map((button) => button.label);
+  for (const label of ["读取", "校验", "保存", "回滚", "扫描插件内置资产", "撤掉本会话注入"]) {
+    assert.ok(labels.includes(label), `应有「${label}」按钮，实际：${labels.join("|")}`);
+  }
+  const area = tree.find((node) => node.props && node.props["data-role"] === "editor-body");
+  assert.ok(area, "应有编辑区 textarea");
+});
+
+test("编辑器「保存」POST op=code.write，把内容带上", async () => {
+  const queue = sectionQueue(INVENTORY_WITH_GROUP, null, "tool");
+  queue[6] = "lib/index.js";
+  queue[7] = "export const a = ;\n";
+  const { mod, net } = loadBundle(queue);
+  const calls = [];
+  net.fetch = async (url, options) => {
+    calls.push(JSON.parse(options.body));
+    return {
+      ok: true,
+      json: async () => ({ ok: true, write: { ok: false, written: false, kind: "js", errors: [{ line: 1, column: 17, message: "Unexpected token ';'" }], message: "校验没通过，没有写入" } }),
+    };
+  };
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const save = buttonsOf(tree).find((button) => button.label === "保存");
+  await save.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(calls[0], { op: "code.write", path: "lib/index.js", content: "export const a = ;\n" });
+});
+
+test("编辑器「校验」POST op=code.validate", async () => {
+  const queue = sectionQueue(INVENTORY_WITH_GROUP, null, "tool");
+  queue[6] = "lib/index.js";
+  queue[7] = "export const a = 1;\n";
+  const { mod, net } = loadBundle(queue);
+  const calls = [];
+  net.fetch = async (url, options) => {
+    calls.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ ok: true, validation: { ok: true, kind: "js", errors: [], notes: [] } }) };
+  };
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const check = buttonsOf(tree).find((button) => button.label === "校验");
+  await check.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(calls[0], { op: "code.validate", path: "lib/index.js", content: "export const a = 1;\n" });
+});
+
+// ── 新版本弹窗 ───────────────────────────────────────────────────────────
+
+const UPDATE_PROMPT = { ...UPDATE, prompt: { show: true } };
+
+test("有新版本时弹窗出现，带「本次不提醒 / 今天不提醒 / 更新」", () => {
+  const { mod } = loadBundle(sectionQueue(INVENTORY, UPDATE_PROMPT));
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const labels = buttonsOf(tree).map((button) => button.label);
+  for (const label of ["本次不提醒", "今天不提醒", "更新"]) {
+    assert.ok(labels.includes(label), `弹窗里应有「${label}」，实际：${labels.join("|")}`);
+  }
+  assert.match(textOf(tree), /懒工具箱有新版本/);
+  assert.match(textOf(tree), /0\.5\.3 → 最新 0\.6\.0/);
+});
+
+test("prompt.show 为假时不出弹窗", () => {
+  const { mod } = loadBundle(sectionQueue(INVENTORY, { ...UPDATE, prompt: { show: false } }));
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  assert.doesNotMatch(textOf(tree), /懒工具箱有新版本/);
+});
+
+test("「本次不提醒」POST op=update.snooze scope=session", async () => {
+  const { mod, net } = loadBundle(sectionQueue(INVENTORY, UPDATE_PROMPT));
+  const calls = [];
+  net.fetch = async (url, options) => {
+    calls.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ ok: true, inventory: INVENTORY, update: { ...UPDATE, prompt: { show: false } } }) };
+  };
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const button = buttonsOf(tree).find((item) => item.label === "本次不提醒");
+  await button.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(calls[0], { op: "update.snooze", scope: "session" });
+});
+
+test("「今天不提醒」POST op=update.snooze scope=today", async () => {
+  const { mod, net } = loadBundle(sectionQueue(INVENTORY, UPDATE_PROMPT));
+  const calls = [];
+  net.fetch = async (url, options) => {
+    calls.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ ok: true, inventory: INVENTORY, update: { ...UPDATE, prompt: { show: false } } }) };
+  };
+  const { component } = registerComponent(mod);
+  const tree = render(component({}));
+  const button = buttonsOf(tree).find((item) => item.label === "今天不提醒");
+  await button.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(calls[0], { op: "update.snooze", scope: "today" });
 });

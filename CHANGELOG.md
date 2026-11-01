@@ -2,6 +2,61 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.7.1] - 2026-11-01
+
+**能用图形界面「添加插件」装了（补 dsh.bundle）；新版本弹窗（本次/今天不提醒）、三标签设置页、内置代码编辑器；顺手把包格式对齐官方包。**
+
+### 修复
+
+- **`插件 → 添加插件` 装不上**：DSH 的安装器先读 `manifest.dsh.bundle.patch`，读不到就直接拒绝
+  （`这个包没有声明组合包，无法作为插件安装：dsh-lazy-toolbox declares no dsh.bundle`）。
+  现在包里有 [`cordis.patch.yml`](cordis.patch.yml)，`package.json` 声明
+  `"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`，`files` 与 `exports` 都带上它。
+  补丁里插的那一行与 `wire-profile` 写进 profile 的完全一致，两种装法不叠加。
+- `wire-profile` 写的 insert 行 `inject` 补上 `webServer`，与插件导出的 `inject` 对齐。
+
+### 新增
+
+- **进 DSH 自动查更新 + 弹窗**：启动后约 4 秒异步查一次 GitHub Releases（`updateCheck`，间隔
+  `updateCheckHours`），有新版本就在设置页弹窗：
+  **本次不提醒**（`update-state.json` 记 process token，重启即失效）/ **今天不提醒**（记到当天
+  23:59，跨重启当天也不再弹）/ **更新**（跳到「关于」并开始下载）。静默状态写进 `update-state.json`
+  的 `snooze`，`check` 不会把它冲掉；接口新增 `POST op=update.snooze { scope }`，
+  `GET` 的 `update.prompt.show` 就是「该不该弹」。
+- **设置页改成三标签**：`懒加载` / `工具` / `关于`。
+  - 懒加载：三类开关（插件工具 / skill / MCP）与加载方式；
+  - 工具：扫描插件内置资产、撤掉本会话注入、**代码编辑器**；
+  - 关于：版本、仓库、当前托管数量、云更新卡片。
+- **内置代码编辑器** `lib/editor.js`：`read` / `validate` / `write` / `patch` / `revert` 五步，
+  写前先校验、不通过不落盘，覆盖前自动备份到 `<数据目录>/editor-backups/`。
+  校验：JS 走 `node --check` 真解析器（ESM/CJS 都认）、JSON 走 `JSON.parse` 并把 position 换成
+  **行列**、YAML 浅校验（Tab 缩进 / 缩进倍数 / 引号 / 括号）。给 AI 的入口是
+  `toolbox { action: "code", step: ... }`；CLI 是 `code <read|validate|write|revert> <路径>`；
+  HTTP 是 `code.read` / `code.validate` / `code.write` / `code.revert`。
+- `toolbox` schema：`step` 扩到 8 个值，新增 `content` / `find` / `replace` / `force`。
+- `dataDir` 进入 `GET` 的 inventory，「关于」页能直接看到数据目录。
+
+### 调整
+
+- **包格式对齐官方包**（对比见 [docs/plugin-format.md](docs/plugin-format.md)）：
+  `exports` 由字符串改成条件对象（`{ "default": "./lib/index.js" }` 形态），新增 `icon.svg` +
+  `"icon"` 字段并进 `files`。刻意不写的三处（`peerDependencies` / `types` / `dsh.bundle.patch`）
+  在文档里逐条写了原因。
+- 设置页头部右侧显示当前版本号。
+
+### 文档
+
+- 新增 [docs/editor.md](docs/editor.md)、[docs/plugin-format.md](docs/plugin-format.md)；
+  [docs/update.md](docs/update.md) 补弹窗与静默。
+
+### 测试
+
+- 新增 `test/editor.test.mjs`（12 项：类型识别 / 行列换算 / JS 真假解析 / JSON 行列 / YAML 浅校验 /
+  不落盘 / force / 备份回滚 / 拒读 / patch 唯一性 / 结果格式化）。
+- 云更新补 4 项（本次不提醒跨重启、今天不提醒跨重启、无新版本不弹、静默不被 check 冲掉）。
+- 设置页补 9 项（三标签、关于页、工具页、编辑器保存/校验的请求体、弹窗三个按钮）。
+- 全量 **116 项** 通过。
+
 ## [0.7.0] - 2026-11-01
 
 **新增第三类「插件工具」：别的插件可以把工具交出来托管，默认一个都不常驻。**
